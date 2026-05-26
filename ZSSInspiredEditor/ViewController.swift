@@ -9,18 +9,18 @@ import UIKit
 
 final class ViewController: UIViewController {
 
-    private enum EditorMode {
+    fileprivate enum EditorMode {
         case richText
         case html
     }
 
-    private enum ListMode {
+    fileprivate enum ListMode {
         case none
         case unordered
         case ordered
     }
 
-    private enum HeadingStyle: String, CaseIterable {
+    fileprivate enum HeadingStyle: String, CaseIterable, Hashable {
         case paragraph = "P"
         case h1 = "H1"
         case h2 = "H2"
@@ -46,6 +46,25 @@ final class ViewController: UIViewController {
         }
     }
 
+    fileprivate enum ToolbarItem: Hashable {
+        case bold
+        case italic
+        case underline
+        case strikeThrough
+        case subscriptStyle
+        case superscriptStyle
+        case heading(HeadingStyle)
+        case alignLeft
+        case alignCenter
+        case alignRight
+        case alignJustified
+        case unorderedList
+        case orderedList
+        case link
+        case foregroundColor
+        case backgroundColor
+    }
+
     private let editorTextView = UITextView()
     private let htmlTextView = UITextView()
     private let toolbarScrollView = UIScrollView()
@@ -58,6 +77,7 @@ final class ViewController: UIViewController {
     private var orderedListCounter = 1
     private var selectedHeadingStyle: HeadingStyle = .paragraph
     private var isSyncingText = false
+    private var toolbarButtons: [ToolbarItem: UIButton] = [:]
 
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
@@ -126,40 +146,40 @@ private extension ViewController {
         toolbarStackView.addArrangedSubview(modeControl)
         toolbarStackView.addArrangedSubview(separator())
 
-        addToolbarButton(title: "B", imageName: "bold", action: #selector(toggleBold))
-        addToolbarButton(title: "I", imageName: "italic", action: #selector(toggleItalic))
-        addToolbarButton(title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
-        addToolbarButton(title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
-        addToolbarButton(title: "x2", imageName: "textformat.subscript", action: #selector(toggleSubscript))
-        addToolbarButton(title: "x2", imageName: "textformat.superscript", action: #selector(toggleSuperscript))
+        addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
+        addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
+        addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
+        addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
+        addToolbarButton(.subscriptStyle, title: "x2", imageName: "textformat.subscript", action: #selector(toggleSubscript))
+        addToolbarButton(.superscriptStyle, title: "x2", imageName: "textformat.superscript", action: #selector(toggleSuperscript))
         addToolbarButton(title: "Tx", imageName: "clear", action: #selector(removeFormatting))
         toolbarStackView.addArrangedSubview(separator())
 
         for style in HeadingStyle.allCases {
-            addToolbarButton(title: style.rawValue, imageName: nil, action: #selector(applyHeadingStyle(_:)), accessibilityValue: style.rawValue)
+            addToolbarButton(.heading(style), title: style.rawValue, imageName: nil, action: #selector(applyHeadingStyle(_:)), accessibilityValue: style.rawValue)
         }
         toolbarStackView.addArrangedSubview(separator())
 
-        addToolbarButton(title: "L", imageName: "text.alignleft", action: #selector(alignLeft))
-        addToolbarButton(title: "C", imageName: "text.aligncenter", action: #selector(alignCenter))
-        addToolbarButton(title: "R", imageName: "text.alignright", action: #selector(alignRight))
-        addToolbarButton(title: "J", imageName: "text.justify", action: #selector(alignJustified))
+        addToolbarButton(.alignLeft, title: "L", imageName: "text.alignleft", action: #selector(alignLeft))
+        addToolbarButton(.alignCenter, title: "C", imageName: "text.aligncenter", action: #selector(alignCenter))
+        addToolbarButton(.alignRight, title: "R", imageName: "text.alignright", action: #selector(alignRight))
+        addToolbarButton(.alignJustified, title: "J", imageName: "text.justify", action: #selector(alignJustified))
         toolbarStackView.addArrangedSubview(separator())
 
-        addToolbarButton(title: "•", imageName: "list.bullet", action: #selector(toggleUnorderedList))
-        addToolbarButton(title: "1.", imageName: "list.number", action: #selector(toggleOrderedList))
+        addToolbarButton(.unorderedList, title: "•", imageName: "list.bullet", action: #selector(toggleUnorderedList))
+        addToolbarButton(.orderedList, title: "1.", imageName: "list.number", action: #selector(toggleOrderedList))
         addToolbarButton(title: "<", imageName: "decrease.indent", action: #selector(outdentSelection))
         addToolbarButton(title: ">", imageName: "increase.indent", action: #selector(indentSelection))
         toolbarStackView.addArrangedSubview(separator())
 
         addToolbarButton(title: "↶", imageName: "arrow.uturn.backward", action: #selector(undo))
         addToolbarButton(title: "↷", imageName: "arrow.uturn.forward", action: #selector(redo))
-        addToolbarButton(title: "🔗", imageName: "link", action: #selector(insertLink))
+        addToolbarButton(.link, title: "🔗", imageName: "link", action: #selector(insertLink))
         addToolbarButton(title: "⊘", imageName: "link.badge.minus", action: #selector(removeLink))
         addToolbarButton(title: "Img", imageName: "photo", action: #selector(insertImagePlaceholder))
         addToolbarButton(title: "—", imageName: "minus", action: #selector(insertHorizontalRule))
-        addToolbarButton(title: "A", imageName: "paintpalette", action: #selector(applyForegroundColor))
-        addToolbarButton(title: "Bg", imageName: "highlighter", action: #selector(applyBackgroundColor))
+        addToolbarButton(.foregroundColor, title: "A", imageName: "paintpalette", action: #selector(applyForegroundColor))
+        addToolbarButton(.backgroundColor, title: "Bg", imageName: "highlighter", action: #selector(applyBackgroundColor))
     }
 
     func configureTextViews() {
@@ -198,9 +218,10 @@ private extension ViewController {
             attributes: defaultTypingAttributes()
         )
         updatePlaceholder()
+        updateToolbarSelectionState()
     }
 
-    func addToolbarButton(title: String, imageName: String?, action: Selector, accessibilityValue: String? = nil) {
+    private func addToolbarButton(_ item: ToolbarItem? = nil, title: String, imageName: String?, action: Selector, accessibilityValue: String? = nil) {
         var configuration = UIButton.Configuration.bordered()
         configuration.cornerStyle = .medium
         configuration.baseForegroundColor = .label
@@ -217,8 +238,18 @@ private extension ViewController {
         button.heightAnchor.constraint(equalToConstant: 38).isActive = true
         button.accessibilityLabel = title
         button.accessibilityValue = accessibilityValue
+        button.configurationUpdateHandler = { button in
+            var updatedConfiguration = button.configuration ?? .bordered()
+            updatedConfiguration.baseForegroundColor = button.isSelected ? .white : .label
+            updatedConfiguration.baseBackgroundColor = button.isSelected ? .systemBlue : .clear
+            button.configuration = updatedConfiguration
+        }
         button.addTarget(self, action: action, for: .touchUpInside)
         toolbarStackView.addArrangedSubview(button)
+
+        if let item {
+            toolbarButtons[item] = button
+        }
     }
 
     func separator() -> UIView {
@@ -281,6 +312,7 @@ private extension ViewController {
         let range = editorTextView.selectedRange
         guard range.length > 0 else {
             editorTextView.typingAttributes = defaultTypingAttributes()
+            updateToolbarSelectionState()
             return
         }
 
@@ -306,6 +338,7 @@ private extension ViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.upperBound, length: 0)
         editorTextView.typingAttributes[.font] = fontMatching(currentFont(), pointSize: headingStyle.pointSize, forceBold: headingStyle.isBold)
+        updateToolbarSelectionState()
     }
 
     @objc func alignLeft() {
@@ -385,6 +418,7 @@ private extension ViewController {
         mutableText.removeAttribute(.underlineStyle, range: range)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
+        updateToolbarSelectionState()
     }
 
     @objc func insertImagePlaceholder() {
@@ -499,6 +533,7 @@ private extension ViewController {
     func applyAttribute(_ key: NSAttributedString.Key, value: Any, range: NSRange) {
         if range.length == 0 {
             editorTextView.typingAttributes[key] = value
+            updateToolbarSelectionState()
             return
         }
 
@@ -506,11 +541,13 @@ private extension ViewController {
         mutableText.addAttribute(key, value: value, range: range)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
+        updateToolbarSelectionState()
     }
 
     func removeAttribute(_ key: NSAttributedString.Key, range: NSRange) {
         if range.length == 0 {
             editorTextView.typingAttributes.removeValue(forKey: key)
+            updateToolbarSelectionState()
             return
         }
 
@@ -518,6 +555,7 @@ private extension ViewController {
         mutableText.removeAttribute(key, range: range)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
+        updateToolbarSelectionState()
     }
 
     func replaceSelection(with attributedString: NSAttributedString, selectedOffset: Int) {
@@ -527,6 +565,7 @@ private extension ViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + selectedOffset, length: 0)
         updatePlaceholder()
+        updateToolbarSelectionState()
     }
 
     func applyAlignment(_ alignment: NSTextAlignment) {
@@ -546,6 +585,7 @@ private extension ViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
         editorTextView.typingAttributes[.paragraphStyle] = (mutableText.attribute(.paragraphStyle, at: max(0, range.location), effectiveRange: nil) as? NSParagraphStyle) ?? defaultParagraphStyle()
+        updateToolbarSelectionState()
     }
 
     func currentParagraphRange() -> NSRange {
@@ -598,6 +638,199 @@ private extension ViewController {
 
         return NSRange(location: start, length: end - start)
     }
+
+    func updateToolbarSelectionState() {
+        guard editorMode == .richText else { return }
+
+        setToolbarButton(.bold, selected: selectionHasFontTrait(.traitBold))
+        setToolbarButton(.italic, selected: selectionHasFontTrait(.traitItalic))
+        setToolbarButton(.underline, selected: selectionHasAttribute(.underlineStyle))
+        setToolbarButton(.strikeThrough, selected: selectionHasAttribute(.strikethroughStyle))
+        setToolbarButton(.subscriptStyle, selected: selectionHasBaselineOffset { $0 < 0 })
+        setToolbarButton(.superscriptStyle, selected: selectionHasBaselineOffset { $0 > 0 })
+        setToolbarButton(.link, selected: selectionHasAttribute(.link))
+        setToolbarButton(.foregroundColor, selected: selectionHasNonDefaultColor(.foregroundColor, defaultColor: .label))
+        setToolbarButton(.backgroundColor, selected: selectionHasAttribute(.backgroundColor))
+
+        let headingStyle = currentHeadingStyle()
+        for style in HeadingStyle.allCases {
+            setToolbarButton(.heading(style), selected: style == headingStyle)
+        }
+
+        switch currentParagraphAlignment() {
+        case .center:
+            setAlignmentButtons(selected: .alignCenter)
+        case .right:
+            setAlignmentButtons(selected: .alignRight)
+        case .justified:
+            setAlignmentButtons(selected: .alignJustified)
+        default:
+            setAlignmentButtons(selected: .alignLeft)
+        }
+
+        switch currentListMode() {
+        case .unordered:
+            setToolbarButton(.unorderedList, selected: true)
+            setToolbarButton(.orderedList, selected: false)
+        case .ordered:
+            setToolbarButton(.unorderedList, selected: false)
+            setToolbarButton(.orderedList, selected: true)
+        case .none:
+            setToolbarButton(.unorderedList, selected: false)
+            setToolbarButton(.orderedList, selected: false)
+        }
+    }
+
+    private func setToolbarButton(_ item: ToolbarItem, selected: Bool) {
+        guard let button = toolbarButtons[item], button.isSelected != selected else { return }
+        button.isSelected = selected
+    }
+
+    private func setAlignmentButtons(selected selectedItem: ToolbarItem) {
+        for item in [ToolbarItem.alignLeft, .alignCenter, .alignRight, .alignJustified] {
+            setToolbarButton(item, selected: item == selectedItem)
+        }
+    }
+
+    func selectionInspectionRange() -> NSRange? {
+        let textLength = editorTextView.attributedText.length
+        guard textLength > 0 else { return nil }
+
+        let selection = editorTextView.selectedRange
+        if selection.length > 0 {
+            return NSRange(location: selection.location, length: min(selection.length, textLength - selection.location))
+        }
+
+        let location = selection.location == textLength ? max(0, textLength - 1) : min(selection.location, textLength - 1)
+        return NSRange(location: location, length: 1)
+    }
+
+    func selectionHasFontTrait(_ trait: UIFontDescriptor.SymbolicTraits) -> Bool {
+        guard let range = selectionInspectionRange() else {
+            return (editorTextView.typingAttributes[.font] as? UIFont)?.fontDescriptor.symbolicTraits.contains(trait) == true
+        }
+
+        var hasText = false
+        var allTextHasTrait = true
+        editorTextView.attributedText.enumerateAttribute(.font, in: range) { value, subrange, stop in
+            guard subrange.length > 0 else { return }
+            hasText = true
+            let font = (value as? UIFont) ?? baseFont
+            if !font.fontDescriptor.symbolicTraits.contains(trait) {
+                allTextHasTrait = false
+                stop.pointee = true
+            }
+        }
+        return hasText && allTextHasTrait
+    }
+
+    func selectionHasAttribute(_ key: NSAttributedString.Key) -> Bool {
+        guard let range = selectionInspectionRange() else {
+            return editorTextView.typingAttributes[key] != nil
+        }
+
+        var hasText = false
+        var allTextHasAttribute = true
+        editorTextView.attributedText.enumerateAttribute(key, in: range) { value, subrange, stop in
+            guard subrange.length > 0 else { return }
+            hasText = true
+            if value == nil {
+                allTextHasAttribute = false
+                stop.pointee = true
+            }
+        }
+        return hasText && allTextHasAttribute
+    }
+
+    func selectionHasBaselineOffset(_ predicate: (Double) -> Bool) -> Bool {
+        guard let range = selectionInspectionRange() else {
+            return numericValue(editorTextView.typingAttributes[.baselineOffset]).map(predicate) == true
+        }
+
+        var hasText = false
+        var allTextMatches = true
+        editorTextView.attributedText.enumerateAttribute(.baselineOffset, in: range) { value, subrange, stop in
+            guard subrange.length > 0 else { return }
+            hasText = true
+            guard let offset = numericValue(value), predicate(offset) else {
+                allTextMatches = false
+                stop.pointee = true
+                return
+            }
+        }
+        return hasText && allTextMatches
+    }
+
+    func selectionHasNonDefaultColor(_ key: NSAttributedString.Key, defaultColor: UIColor) -> Bool {
+        guard let range = selectionInspectionRange() else {
+            guard let color = editorTextView.typingAttributes[key] as? UIColor else { return false }
+            return !color.isEqual(defaultColor)
+        }
+
+        var hasCustomColor = false
+        editorTextView.attributedText.enumerateAttribute(key, in: range) { value, _, stop in
+            guard let color = value as? UIColor, !color.isEqual(defaultColor) else { return }
+            hasCustomColor = true
+            stop.pointee = true
+        }
+        return hasCustomColor
+    }
+
+    private func currentHeadingStyle() -> HeadingStyle {
+        let font = inspectedFont()
+        return HeadingStyle.allCases.min { lhs, rhs in
+            abs(lhs.pointSize - font.pointSize) < abs(rhs.pointSize - font.pointSize)
+        } ?? .paragraph
+    }
+
+    func inspectedFont() -> UIFont {
+        guard let range = selectionInspectionRange() else {
+            return editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
+        }
+
+        return editorTextView.attributedText.attribute(.font, at: range.location, effectiveRange: nil) as? UIFont ?? baseFont
+    }
+
+    func currentParagraphAlignment() -> NSTextAlignment {
+        let paragraphRange = currentParagraphRange()
+        guard editorTextView.attributedText.length > 0, paragraphRange.location < editorTextView.attributedText.length else {
+            return (editorTextView.typingAttributes[.paragraphStyle] as? NSParagraphStyle)?.alignment ?? .left
+        }
+
+        let style = editorTextView.attributedText.attribute(.paragraphStyle, at: paragraphRange.location, effectiveRange: nil) as? NSParagraphStyle
+        return style?.alignment ?? .left
+    }
+
+    private func currentListMode() -> ListMode {
+        let paragraphRange = currentParagraphRange()
+        guard editorTextView.text.count > 0, paragraphRange.location < (editorTextView.text as NSString).length else {
+            return listMode
+        }
+
+        let paragraph = (editorTextView.text as NSString).substring(with: paragraphRange)
+        if paragraph.trimmingCharacters(in: .whitespaces).hasPrefix("•") {
+            return .unordered
+        }
+        if paragraph.orderedListNumber != nil {
+            return .ordered
+        }
+        return .none
+    }
+
+    func numericValue(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Int:
+            return Double(value)
+        case let value as CGFloat:
+            return Double(value)
+        case let value as Double:
+            return value
+        case let value as NSNumber:
+            return value.doubleValue
+        default:
+            return nil
+        }
+    }
 }
 
 private extension ViewController {
@@ -645,6 +878,7 @@ private extension ViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + locationDelta, length: 0)
         updatePlaceholder()
+        updateToolbarSelectionState()
     }
 
     func removeListMarkersFromCurrentParagraphs() {
@@ -668,6 +902,7 @@ private extension ViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: max(0, range.location - locationDelta), length: 0)
         updatePlaceholder()
+        updateToolbarSelectionState()
     }
 
     func paragraphRanges(in range: NSRange, textLength: Int) -> [NSRange] {
@@ -742,6 +977,7 @@ private extension ViewController {
         editorTextView.selectedRange = NSRange(location: previousParagraph.location, length: 0)
         listMode = .none
         updatePlaceholder()
+        updateToolbarSelectionState()
         return true
     }
 
@@ -802,7 +1038,13 @@ extension ViewController: UITextViewDelegate {
         guard !isSyncingText else { return }
         if textView == editorTextView {
             updatePlaceholder()
+            updateToolbarSelectionState()
         }
+    }
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        guard textView == editorTextView, !isSyncingText else { return }
+        updateToolbarSelectionState()
     }
 
     func textView(
@@ -832,6 +1074,7 @@ extension ViewController: UITextViewDelegate {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + insertion.length, length: 0)
         updatePlaceholder()
+        updateToolbarSelectionState()
         return false
     }
 }
