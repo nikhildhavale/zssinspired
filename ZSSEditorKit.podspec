@@ -14,7 +14,6 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '15.0'
   s.swift_versions   = ['5.9']
 
-  s.source_files     = 'Sources/ZSSEditorKit/**/*.swift'
-  s.exclude_files    = ['Package.swift', '**/Package.swift']
+  s.source_files     = 'ZSSInspiredEditor/ZSSEditorKit/Sources/ZSSEditorKit/**/*.swift'
   s.frameworks       = 'UIKit'
 end

@@ -11,40 +11,46 @@ horizontal-rule insertion.
 - Swift 5.9 or later
 - UIKit
 
-## Integration
-
-The reusable package is located at:
-
-```text
-ZSSInspiredEditor/ZSSEditorKit
-```
+## Installation
 
 ### Swift Package Manager
 
-1. Copy the `ZSSInspiredEditor/ZSSEditorKit` directory into your project or a
-   shared location.
-2. In Xcode, select **File > Add Package Dependencies**.
-3. Select **Add Local...** and choose the copied `ZSSEditorKit` directory.
-4. Add the `ZSSEditorKit` library product to your app target.
+In Xcode, select **File > Add Package Dependencies** and enter the repository URL:
 
-To publish the package for remote Swift Package Manager installation, place the
-contents of `ZSSInspiredEditor/ZSSEditorKit` at the root of its own Git
-repository and add that repository's URL as a package dependency.
+```
+https://github.com/nikhildhavale/zssinspired
+```
+
+Or add it to your `Package.swift` dependencies:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/nikhildhavale/zssinspired.git", from: "0.1.0")
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: [
+            .product(name: "ZSSEditorKit", package: "zssinspired")
+        ]
+    )
+]
+```
 
 ### CocoaPods
 
-Reference the package directory from your app's `Podfile`:
+Add the following to your `Podfile`:
 
 ```ruby
 platform :ios, '15.0'
 
 target 'YourApp' do
   use_frameworks!
-  pod 'ZSSEditorKit', path: '../ZSSInspiredEditor/ZSSEditorKit'
+  pod 'ZSSEditorKit', :git => 'https://github.com/nikhildhavale/zssinspired.git', :tag => '0.1.0'
 end
 ```
 
-Then install the dependency:
+Then run:
 
 ```sh
 pod install
@@ -64,7 +70,6 @@ final class ViewController: UIViewController {
         let navigationController = UINavigationController(
             rootViewController: editor
         )
-
         present(navigationController, animated: true)
     }
 }
@@ -101,7 +106,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 - Bold, italic, underline, and strikethrough
 - Subscript and superscript
-- Paragraph and H1-H6 heading styles
+- Paragraph and H1–H6 heading styles
 - Left, center, right, and justified alignment
 - Ordered and unordered lists
 - Indent and outdent
@@ -111,9 +116,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 - Rich-text and HTML editing modes
 - Image placeholders and horizontal rules
 
-## Current API
+## License
 
-The public API currently provides `RichTextEditorViewController` initialization
-and presentation. Editor content configuration and retrieval are not yet
-exposed as public APIs.
-
+MIT
