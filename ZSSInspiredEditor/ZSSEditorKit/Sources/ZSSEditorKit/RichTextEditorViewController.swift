@@ -64,7 +64,11 @@ public final class RichTextEditorViewController: UIViewController {
     private let toolbarStackView = UIStackView()
     private let modeControl = UISegmentedControl(items: ["Edit", "HTML"])
     private let placeholderLabel = UILabel()
+    private let mentionTableView = UITableView(frame: .zero, style: .plain)
 
+    private let mentionSuggestions = ["Alice", "Bob", "Charlie", "David", "Emma", "Nikhil"]
+    private var filteredMentions: [String] = []
+    private var mentionQueryRange: NSRange?
     private var editorMode: EditorMode = .richText
     private var listMode: ListMode = .none
     private var orderedListCounter = 1
@@ -116,6 +120,7 @@ private extension RichTextEditorViewController {
         toolbarScrollView.addSubview(toolbarStackView)
         view.addSubview(editorTextView)
         view.addSubview(htmlTextView)
+        configureMentionTableView()
 
         NSLayoutConstraint.activate([
             toolbarScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -139,6 +144,18 @@ private extension RichTextEditorViewController {
             htmlTextView.trailingAnchor.constraint(equalTo: editorTextView.trailingAnchor),
             htmlTextView.bottomAnchor.constraint(equalTo: editorTextView.bottomAnchor)
         ])
+    }
+
+    func configureMentionTableView() {
+        mentionTableView.dataSource = self
+        mentionTableView.delegate = self
+        mentionTableView.rowHeight = 44
+        mentionTableView.register(UITableViewCell.self, forCellReuseIdentifier: "MentionCell")
+        mentionTableView.layer.cornerRadius = 10
+        mentionTableView.layer.borderWidth = 1
+        mentionTableView.layer.borderColor = UIColor.separator.cgColor
+        mentionTableView.isHidden = true
+        view.addSubview(mentionTableView)
     }
 
     func configureToolbar() {
@@ -276,6 +293,7 @@ private extension RichTextEditorViewController {
 
     private func setMode(_ mode: EditorMode) {
         editorMode = mode
+        hideMentionSuggestions()
         editorTextView.isHidden = mode != .richText
         htmlTextView.isHidden = mode != .html
         if mode == .richText {
@@ -1031,6 +1049,86 @@ private extension RichTextEditorViewController {
     func updatePlaceholder() {
         placeholderLabel.isHidden = !editorTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    func updateMentionSuggestions() {
+        guard let queryRange = activeMentionQueryRange() else {
+            hideMentionSuggestions()
+            return
+        }
+
+        let query = (editorTextView.text as NSString).substring(with: queryRange)
+            .dropFirst()
+            .lowercased()
+        filteredMentions = mentionSuggestions.filter { query.isEmpty || $0.lowercased().hasPrefix(query) }
+        mentionQueryRange = queryRange
+
+        guard !filteredMentions.isEmpty else {
+            hideMentionSuggestions()
+            return
+        }
+
+        mentionTableView.reloadData()
+        positionMentionTable(at: queryRange.location)
+        mentionTableView.isHidden = false
+        view.bringSubviewToFront(mentionTableView)
+    }
+
+    func positionMentionTable(at mentionLocation: Int) {
+        guard let textPosition = editorTextView.position(from: editorTextView.beginningOfDocument, offset: mentionLocation) else { return }
+
+        let caretFrame = editorTextView.convert(editorTextView.caretRect(for: textPosition), to: view)
+        let margin: CGFloat = 12
+        let spacing: CGFloat = 4
+        let width = min(280, view.bounds.width - (margin * 2))
+        let height = min(CGFloat(filteredMentions.count) * mentionTableView.rowHeight, 176)
+        let x = min(max(caretFrame.minX, margin), view.bounds.width - width - margin)
+        let maximumBottom = toolbarScrollView.frame.minY - spacing
+        let belowCaretY = caretFrame.maxY + spacing
+        let y = belowCaretY + height <= maximumBottom
+            ? belowCaretY
+            : max(view.safeAreaInsets.top + margin, caretFrame.minY - height - spacing)
+
+        mentionTableView.frame = CGRect(x: x, y: y, width: width, height: height)
+    }
+
+    func activeMentionQueryRange() -> NSRange? {
+        let selection = editorTextView.selectedRange
+        guard selection.length == 0, selection.location <= editorTextView.text.utf16.count else { return nil }
+
+        let prefixRange = NSRange(location: 0, length: selection.location)
+        let expression = try? NSRegularExpression(pattern: #"(?<!\S)@[A-Za-z0-9_]*$"#)
+        return expression?.firstMatch(in: editorTextView.text, range: prefixRange)?.range
+    }
+
+    func hideMentionSuggestions() {
+        mentionQueryRange = nil
+        filteredMentions = []
+        mentionTableView.isHidden = true
+    }
+
+    func insertMention(_ name: String) {
+        guard let queryRange = mentionQueryRange else { return }
+
+        var mentionAttributes = editorTextView.typingAttributes
+        mentionAttributes[.foregroundColor] = UIColor.white
+        mentionAttributes[.backgroundColor] = UIColor.systemBlue
+
+        var trailingAttributes = editorTextView.typingAttributes
+        trailingAttributes.removeValue(forKey: .backgroundColor)
+        trailingAttributes[.foregroundColor] = UIColor.label
+
+        let replacement = NSMutableAttributedString(string: "@\(name)", attributes: mentionAttributes)
+        replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
+
+        let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
+        mutableText.replaceCharacters(in: queryRange, with: replacement)
+        editorTextView.attributedText = mutableText
+        editorTextView.selectedRange = NSRange(location: queryRange.location + replacement.length, length: 0)
+        editorTextView.typingAttributes = trailingAttributes
+        hideMentionSuggestions()
+        updatePlaceholder()
+        updateToolbarSelectionState()
+    }
 }
 
 extension RichTextEditorViewController: UITextViewDelegate {
@@ -1040,12 +1138,14 @@ extension RichTextEditorViewController: UITextViewDelegate {
         if textView == editorTextView {
             updatePlaceholder()
             updateToolbarSelectionState()
+            updateMentionSuggestions()
         }
     }
 
     public func textViewDidChangeSelection(_ textView: UITextView) {
         guard textView == editorTextView, !isSyncingText else { return }
         updateToolbarSelectionState()
+        updateMentionSuggestions()
     }
 
     public func textView(
@@ -1077,6 +1177,25 @@ extension RichTextEditorViewController: UITextViewDelegate {
         updatePlaceholder()
         updateToolbarSelectionState()
         return false
+    }
+}
+
+extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelegate {
+
+    public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        filteredMentions.count
+    }
+
+    public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "MentionCell", for: indexPath)
+        var configuration = cell.defaultContentConfiguration()
+        configuration.text = "@\(filteredMentions[indexPath.row])"
+        cell.contentConfiguration = configuration
+        return cell
+    }
+
+    public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        insertMention(filteredMentions[indexPath.row])
     }
 }
 
