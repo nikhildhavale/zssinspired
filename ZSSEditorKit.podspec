@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://github.com/nikhildhavale/zssinspired'
   s.license          = { :type => 'MIT' }
   s.author           = { 'Nikhil Dhavale' => 'nikhild@mangospring.com' }
-  s.source           = { :git => 'https://github.com/nikhildhavale/zssinspired.git', :branch => 'main' }
+  s.source           = { :git => 'https://github.com/nikhildhavale/zssinspired.git' }
 
   s.ios.deployment_target = '15.0'
   s.swift_versions   = ['5.9']

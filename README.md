@@ -46,7 +46,7 @@ platform :ios, '15.0'
 
 target 'YourApp' do
   use_frameworks!
-  pod 'ZSSEditorKit', :git => 'https://github.com/nikhildhavale/zssinspired.git', :branch => 'main'
+  pod 'ZSSEditorKit', :git => 'https://github.com/nikhildhavale/zssinspired.git'
 end
 ```
 
