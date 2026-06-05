@@ -118,9 +118,9 @@ private extension RichTextEditorViewController {
         view.addSubview(htmlTextView)
 
         NSLayoutConstraint.activate([
-            toolbarScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             toolbarScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             toolbarScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            toolbarScrollView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             toolbarScrollView.heightAnchor.constraint(equalToConstant: 58),
 
             toolbarStackView.topAnchor.constraint(equalTo: toolbarScrollView.contentLayoutGuide.topAnchor),
@@ -129,10 +129,10 @@ private extension RichTextEditorViewController {
             toolbarStackView.bottomAnchor.constraint(equalTo: toolbarScrollView.contentLayoutGuide.bottomAnchor),
             toolbarStackView.heightAnchor.constraint(equalTo: toolbarScrollView.frameLayoutGuide.heightAnchor),
 
-            editorTextView.topAnchor.constraint(equalTo: toolbarScrollView.bottomAnchor),
+            editorTextView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             editorTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             editorTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            editorTextView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            editorTextView.bottomAnchor.constraint(equalTo: toolbarScrollView.topAnchor),
 
             htmlTextView.topAnchor.constraint(equalTo: editorTextView.topAnchor),
             htmlTextView.leadingAnchor.constraint(equalTo: editorTextView.leadingAnchor),
