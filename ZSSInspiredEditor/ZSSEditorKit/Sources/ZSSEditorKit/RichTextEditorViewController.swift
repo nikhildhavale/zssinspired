@@ -114,11 +114,76 @@ public final class RichTextEditorViewController: UIViewController {
         }
     }
 
+    public struct ToolbarColor {
+        public var name: String
+        public var color: UIColor
+
+        public init(name: String, color: UIColor) {
+            self.name = name
+            self.color = color
+        }
+    }
+
+    public struct ToolbarAction {
+        public var title: String
+        public var imageName: String?
+        public var handler: () -> Void
+
+        public init(title: String, imageName: String? = nil, handler: @escaping () -> Void) {
+            self.title = title
+            self.imageName = imageName
+            self.handler = handler
+        }
+    }
+
+    public enum PlusButtonBehavior {
+        case action(ToolbarAction)
+        case menu([ToolbarAction])
+    }
+
+    public struct ToolbarConfiguration {
+        public var showsModeControl: Bool
+        public var plusButtonBehavior: PlusButtonBehavior?
+        public var foregroundColors: [ToolbarColor]
+        public var backgroundColors: [ToolbarColor]
+
+        public init(
+            showsModeControl: Bool = false,
+            plusButtonBehavior: PlusButtonBehavior? = nil,
+            foregroundColors: [ToolbarColor] = [
+                ToolbarColor(name: "Default", color: .label),
+                ToolbarColor(name: "Red", color: .systemRed),
+                ToolbarColor(name: "Blue", color: .systemBlue),
+                ToolbarColor(name: "Green", color: .systemGreen),
+                ToolbarColor(name: "Orange", color: .systemOrange),
+                ToolbarColor(name: "Purple", color: .systemPurple)
+            ],
+            backgroundColors: [ToolbarColor] = [
+                ToolbarColor(name: "Yellow", color: .systemYellow.withAlphaComponent(0.45)),
+                ToolbarColor(name: "Green", color: .systemGreen.withAlphaComponent(0.35)),
+                ToolbarColor(name: "Blue", color: .systemBlue.withAlphaComponent(0.3)),
+                ToolbarColor(name: "Pink", color: .systemPink.withAlphaComponent(0.3))
+            ]
+        ) {
+            self.showsModeControl = showsModeControl
+            self.plusButtonBehavior = plusButtonBehavior
+            self.foregroundColors = foregroundColors
+            self.backgroundColors = backgroundColors
+        }
+    }
+
     public var mentionConfiguration: MentionConfiguration {
         didSet {
             guard isViewLoaded else { return }
             applyMentionConfiguration()
             updateMentionSuggestions()
+        }
+    }
+
+    public var toolbarConfiguration: ToolbarConfiguration {
+        didSet {
+            guard isViewLoaded else { return }
+            configureToolbar()
         }
     }
 
@@ -202,13 +267,18 @@ public final class RichTextEditorViewController: UIViewController {
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
 
-    public init(mentionConfiguration: MentionConfiguration = MentionConfiguration()) {
+    public init(
+        mentionConfiguration: MentionConfiguration = MentionConfiguration(),
+        toolbarConfiguration: ToolbarConfiguration = ToolbarConfiguration()
+    ) {
         self.mentionConfiguration = mentionConfiguration
+        self.toolbarConfiguration = toolbarConfiguration
         super.init(nibName: nil, bundle: nil)
     }
 
     public required init?(coder: NSCoder) {
         mentionConfiguration = MentionConfiguration()
+        toolbarConfiguration = ToolbarConfiguration()
         super.init(coder: coder)
     }
 
@@ -294,45 +364,42 @@ private extension RichTextEditorViewController {
     }
 
     func configureToolbar() {
-        modeControl.selectedSegmentIndex = 0
-        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-        toolbarStackView.addArrangedSubview(modeControl)
-        toolbarStackView.addArrangedSubview(separator())
+        toolbarStackView.arrangedSubviews.forEach { arrangedSubview in
+            toolbarStackView.removeArrangedSubview(arrangedSubview)
+            arrangedSubview.removeFromSuperview()
+        }
+        toolbarButtons.removeAll()
+        modeControl.removeTarget(self, action: #selector(modeChanged), for: .valueChanged)
 
+        if let plusButtonBehavior = toolbarConfiguration.plusButtonBehavior {
+            addPlusButton(behavior: plusButtonBehavior)
+            toolbarStackView.addArrangedSubview(separator())
+        }
+
+        if toolbarConfiguration.showsModeControl {
+            modeControl.selectedSegmentIndex = editorMode == .richText ? 0 : 1
+            modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
+            toolbarStackView.addArrangedSubview(modeControl)
+            toolbarStackView.addArrangedSubview(separator())
+        }
+
+        addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
         addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
         addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
         addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
         addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
-        addToolbarButton(.subscriptStyle, title: "x2", imageName: "textformat.subscript", action: #selector(toggleSubscript))
-        addToolbarButton(.superscriptStyle, title: "x2", imageName: "textformat.superscript", action: #selector(toggleSuperscript))
-        addToolbarButton(title: "Tx", imageName: "clear", action: #selector(removeFormatting))
+        addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
+        addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
         toolbarStackView.addArrangedSubview(separator())
 
-        for style in HeadingStyle.allCases {
-            addToolbarButton(.heading(style), title: style.rawValue, imageName: nil, action: #selector(applyHeadingStyle(_:)), accessibilityValue: style.rawValue)
-        }
+        addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
+        addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
+        addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
+        addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
         toolbarStackView.addArrangedSubview(separator())
 
-        addToolbarButton(.alignLeft, title: "L", imageName: "text.alignleft", action: #selector(alignLeft))
-        addToolbarButton(.alignCenter, title: "C", imageName: "text.aligncenter", action: #selector(alignCenter))
-        addToolbarButton(.alignRight, title: "R", imageName: "text.alignright", action: #selector(alignRight))
-        addToolbarButton(.alignJustified, title: "J", imageName: "text.justify", action: #selector(alignJustified))
-        toolbarStackView.addArrangedSubview(separator())
-
-        addToolbarButton(.unorderedList, title: "•", imageName: "list.bullet", action: #selector(toggleUnorderedList))
-        addToolbarButton(.orderedList, title: "1.", imageName: "list.number", action: #selector(toggleOrderedList))
-        addToolbarButton(title: "<", imageName: "decrease.indent", action: #selector(outdentSelection))
-        addToolbarButton(title: ">", imageName: "increase.indent", action: #selector(indentSelection))
-        toolbarStackView.addArrangedSubview(separator())
-
-        addToolbarButton(title: "↶", imageName: "arrow.uturn.backward", action: #selector(undo))
-        addToolbarButton(title: "↷", imageName: "arrow.uturn.forward", action: #selector(redo))
-        addToolbarButton(.link, title: "🔗", imageName: "link", action: #selector(insertLink))
-        addToolbarButton(title: "⊘", imageName: "link.badge.minus", action: #selector(removeLink))
-        addToolbarButton(title: "Img", imageName: "photo", action: #selector(insertImagePlaceholder))
-        addToolbarButton(title: "—", imageName: "minus", action: #selector(insertHorizontalRule))
-        addToolbarButton(.foregroundColor, title: "A", imageName: "paintpalette", action: #selector(applyForegroundColor))
-        addToolbarButton(.backgroundColor, title: "Bg", imageName: "highlighter", action: #selector(applyBackgroundColor))
+        addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
+        addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
     }
 
     func configureTextViews() {
@@ -403,6 +470,133 @@ private extension RichTextEditorViewController {
         if let item {
             toolbarButtons[item] = button
         }
+    }
+
+    func addToolbarMenuButton(title: String, imageName: String, menu: UIMenu) {
+        var configuration = UIButton.Configuration.bordered()
+        configuration.cornerStyle = .medium
+        configuration.baseForegroundColor = .label
+        configuration.image = UIImage(systemName: imageName)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10)
+
+        let button = UIButton(configuration: configuration)
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        button.accessibilityLabel = title
+        button.menu = menu
+        button.showsMenuAsPrimaryAction = true
+        toolbarStackView.addArrangedSubview(button)
+    }
+
+    func addPlusButton(behavior: PlusButtonBehavior) {
+        switch behavior {
+        case .action(let action):
+            addToolbarActionButton(title: action.title, imageName: "plus", handler: action.handler)
+        case .menu(let actions):
+            addToolbarMenuButton(title: "More Actions", imageName: "plus", menu: externalActionsMenu(actions: actions))
+        }
+    }
+
+    func addToolbarActionButton(title: String, imageName: String, handler: @escaping () -> Void) {
+        var configuration = UIButton.Configuration.bordered()
+        configuration.cornerStyle = .medium
+        configuration.baseForegroundColor = .label
+        configuration.image = UIImage(systemName: imageName)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10)
+
+        let action = UIAction { _ in handler() }
+        let button = UIButton(configuration: configuration, primaryAction: action)
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        button.accessibilityLabel = title
+        toolbarStackView.addArrangedSubview(button)
+    }
+
+    func externalActionsMenu(actions: [ToolbarAction]) -> UIMenu {
+        let menuActions = actions.map { action in
+            UIAction(title: action.title, image: action.imageName.flatMap(UIImage.init(systemName:))) { _ in
+                action.handler()
+            }
+        }
+        return UIMenu(children: menuActions)
+    }
+
+    func headingMenu() -> UIMenu {
+        let actions = HeadingStyle.allCases.map { style in
+            UIAction(title: headingTitle(style)) { [weak self] _ in self?.applyHeadingStyle(style) }
+        }
+        return UIMenu(title: "Text Style", image: UIImage(systemName: "textformat.size"), children: actions)
+    }
+
+    func headingTitle(_ style: HeadingStyle) -> String {
+        switch style {
+        case .paragraph: return "Paragraph"
+        case .h1: return "Heading 1"
+        case .h2: return "Heading 2"
+        case .h3: return "Heading 3"
+        case .h4: return "Heading 4"
+        case .h5: return "Heading 5"
+        case .h6: return "Heading 6"
+        }
+    }
+
+    func baselineMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Subscript", image: UIImage(systemName: "textformat.subscript")) { [weak self] _ in self?.toggleSubscript() },
+            UIAction(title: "Superscript", image: UIImage(systemName: "textformat.superscript")) { [weak self] _ in self?.toggleSuperscript() }
+        ])
+    }
+
+    func alignmentMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Align Left", image: UIImage(systemName: "text.alignleft")) { [weak self] _ in self?.applyAlignment(.left) },
+            UIAction(title: "Align Center", image: UIImage(systemName: "text.aligncenter")) { [weak self] _ in self?.applyAlignment(.center) },
+            UIAction(title: "Align Right", image: UIImage(systemName: "text.alignright")) { [weak self] _ in self?.applyAlignment(.right) },
+            UIAction(title: "Justify", image: UIImage(systemName: "text.justify")) { [weak self] _ in self?.applyAlignment(.justified) }
+        ])
+    }
+
+    func listMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Bullet List", image: UIImage(systemName: "list.bullet")) { [weak self] _ in self?.toggleUnorderedList() },
+            UIAction(title: "Numbered List", image: UIImage(systemName: "list.number")) { [weak self] _ in self?.toggleOrderedList() },
+            UIAction(title: "Increase Indent", image: UIImage(systemName: "increase.indent")) { [weak self] _ in self?.indentSelection() },
+            UIAction(title: "Decrease Indent", image: UIImage(systemName: "decrease.indent")) { [weak self] _ in self?.outdentSelection() }
+        ])
+    }
+
+    func insertMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.insertImagePlaceholder() },
+            UIAction(title: "Horizontal Rule", image: UIImage(systemName: "minus")) { [weak self] _ in self?.insertHorizontalRule() }
+        ])
+    }
+
+    func linkMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Add Link", image: UIImage(systemName: "link")) { [weak self] _ in self?.insertLink() },
+            UIAction(title: "Remove Link", image: UIImage(systemName: "link.badge.minus"), attributes: .destructive) { [weak self] _ in self?.removeLink() }
+        ])
+    }
+
+    func colorsMenu() -> UIMenu {
+        UIMenu(children: [
+            colorMenu(title: "Text Color", imageName: "character", colors: toolbarConfiguration.foregroundColors, attribute: .foregroundColor),
+            colorMenu(title: "Background Color", imageName: "highlighter", colors: toolbarConfiguration.backgroundColors, attribute: .backgroundColor)
+        ])
+    }
+
+    func colorMenu(title: String, imageName: String, colors: [ToolbarColor], attribute: NSAttributedString.Key) -> UIMenu {
+        var actions = colors.map { color in
+            UIAction(title: color.name, image: UIImage(systemName: "circle.fill")?.withTintColor(color.color, renderingMode: .alwaysOriginal)) { [weak self] _ in
+                self?.applyAttribute(attribute, value: color.color, range: self?.editorTextView.selectedRange ?? NSRange(location: 0, length: 0))
+            }
+        }
+        actions.append(UIAction(title: "Clear Color", image: UIImage(systemName: "xmark.circle"), attributes: .destructive) { [weak self] _ in
+            guard let self else { return }
+            removeAttribute(attribute, range: editorTextView.selectedRange)
+        })
+        return UIMenu(title: title, image: UIImage(systemName: imageName), children: actions)
     }
 
     func separator() -> UIView {
@@ -480,7 +674,10 @@ private extension RichTextEditorViewController {
             let rawValue = sender.accessibilityValue,
             let headingStyle = HeadingStyle(rawValue: rawValue)
         else { return }
+        applyHeadingStyle(headingStyle)
+    }
 
+    func applyHeadingStyle(_ headingStyle: HeadingStyle) {
         selectedHeadingStyle = headingStyle
         let range = currentParagraphRange()
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
@@ -556,11 +753,48 @@ private extension RichTextEditorViewController {
     }
 
     @objc func insertLink() {
+        let selectedRange = editorTextView.selectedRange
         let selectedText = selectedPlainText()
-        let title = selectedText.isEmpty ? "OpenAI" : selectedText
-        let url = URL(string: "https://openai.com")!
-        let attributes = linkTypingAttributes(url: url)
-        replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.count)
+        let alert = UIAlertController(title: "Add Link", message: "Enter the text and destination URL.", preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.placeholder = "Display text"
+            textField.text = selectedText
+        }
+        alert.addTextField { textField in
+            textField.placeholder = "https://example.com"
+            textField.keyboardType = .URL
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak alert] _ in
+            guard let self, let fields = alert?.textFields, fields.count == 2 else { return }
+            let displayText = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let urlText = fields[1].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard let url = normalizedURL(from: urlText) else {
+                presentInvalidURLAlert()
+                return
+            }
+
+            let title = displayText.isEmpty ? url.absoluteString : displayText
+            editorTextView.selectedRange = selectedRange
+            let attributes = linkTypingAttributes(url: url)
+            replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
+        })
+        present(alert, animated: true)
+    }
+
+    func normalizedURL(from text: String) -> URL? {
+        guard !text.isEmpty else { return nil }
+        let value = text.contains("://") ? text : "https://\(text)"
+        guard let url = URL(string: value), url.host != nil else { return nil }
+        return url
+    }
+
+    func presentInvalidURLAlert() {
+        let alert = UIAlertController(title: "Invalid URL", message: "Enter a valid URL and try again.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     @objc func removeLink() {
