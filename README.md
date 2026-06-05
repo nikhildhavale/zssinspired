@@ -25,7 +25,7 @@ Or add it to your `Package.swift` dependencies:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/nikhildhavale/zssinspired.git", from: "0.1.0")
+    .package(url: "https://github.com/nikhildhavale/zssinspired.git", branch: "main")
 ],
 targets: [
     .target(
@@ -46,7 +46,7 @@ platform :ios, '15.0'
 
 target 'YourApp' do
   use_frameworks!
-  pod 'ZSSEditorKit', :git => 'https://github.com/nikhildhavale/zssinspired.git', :tag => '0.1.0'
+  pod 'ZSSEditorKit', :git => 'https://github.com/nikhildhavale/zssinspired.git', :branch => 'main'
 end
 ```
 
