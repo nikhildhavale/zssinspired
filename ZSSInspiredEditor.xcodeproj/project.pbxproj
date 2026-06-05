@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		31AF2CF02FD2BAC6000E13BB /* ZSSEditorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 31AF2CEF2FD2BAC6000E13BB /* ZSSEditorKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		31993FFE2FC0A5E500170CF8 /* ZSSInspiredEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZSSInspiredEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				31AF2CF02FD2BAC6000E13BB /* ZSSEditorKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +83,7 @@
 			);
 			name = ZSSInspiredEditor;
 			packageProductDependencies = (
+				31AF2CEF2FD2BAC6000E13BB /* ZSSEditorKit */,
 			);
 			productName = ZSSInspiredEditor;
 			productReference = 31993FFE2FC0A5E500170CF8 /* ZSSInspiredEditor.app */;
@@ -91,7 +97,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					31993FFD2FC0A5E500170CF8 = {
 						CreatedOnToolsVersion = 26.4.1;
@@ -107,6 +113,9 @@
 			);
 			mainGroup = 31993FF52FC0A5E500170CF8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				31AF2CEE2FD2BAC6000E13BB /* XCLocalSwiftPackageReference "ZSSInspiredEditor/ZSSEditorKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 31993FFF2FC0A5E500170CF8 /* Products */;
 			projectDirPath = "";
@@ -259,6 +268,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -316,6 +326,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -343,6 +354,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		31AF2CEE2FD2BAC6000E13BB /* XCLocalSwiftPackageReference "ZSSInspiredEditor/ZSSEditorKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ZSSInspiredEditor/ZSSEditorKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		31AF2CEF2FD2BAC6000E13BB /* ZSSEditorKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ZSSEditorKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 31993FF62FC0A5E500170CF8 /* Project object */;
 }
