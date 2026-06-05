@@ -2,6 +2,126 @@ import UIKit
 
 public final class RichTextEditorViewController: UIViewController {
 
+    public enum MentionImage {
+        case uiImage(UIImage)
+        case url(URL)
+        case initials(String)
+    }
+
+    public enum MentionImageShape {
+        case circle
+        case roundedRectangle(cornerRadius: CGFloat)
+    }
+
+    public protocol MentionItem {
+        var mentionIdentifier: String { get }
+        var name: String { get }
+        var image: MentionImage? { get }
+        var isSelfMention: Bool { get }
+    }
+
+    public struct MentionSuggestion: MentionItem {
+        public var mentionIdentifier: String
+        public var name: String
+        public var image: MentionImage?
+        public var isSelfMention: Bool
+
+        public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false) {
+            self.mentionIdentifier = mentionIdentifier ?? name
+            self.name = name
+            self.image = image
+            self.isSelfMention = isSelfMention
+        }
+    }
+
+    public struct MentionConfiguration {
+        public var suggestions: [any MentionItem]
+        public var selfMentionLabel: String
+        public var mentionForegroundColor: UIColor
+        public var mentionBackgroundColor: UIColor
+        public var otherMentionForegroundColor: UIColor
+        public var otherMentionBackgroundColor: UIColor
+        public var mentionHorizontalPadding: CGFloat
+        public var mentionVerticalPadding: CGFloat
+        public var mentionCornerRadius: CGFloat
+        public var suggestionForegroundColor: UIColor
+        public var suggestionBackgroundColor: UIColor
+        public var initialsBackgroundColors: [UIColor]
+        public var imageShape: MentionImageShape
+        public var imageSize: CGFloat
+        public var rowHeight: CGFloat
+        public var showsAlphabeticalSections: Bool
+        public var sectionHeaderHeight: CGFloat
+        public var sectionHeaderForegroundColor: UIColor
+        public var sectionHeaderBackgroundColor: UIColor
+        public var maximumVisibleRows: Int
+        public var listWidth: CGFloat
+        public var cornerRadius: CGFloat
+
+        public init(
+            suggestions: [any MentionItem] = [
+                MentionSuggestion(name: "Alice"),
+                MentionSuggestion(name: "Bob"),
+                MentionSuggestion(name: "Charlie"),
+                MentionSuggestion(name: "David"),
+                MentionSuggestion(name: "Emma"),
+                MentionSuggestion(name: "Nikhil", isSelfMention: true)
+            ],
+            selfMentionLabel: String = "You",
+            mentionForegroundColor: UIColor = .white,
+            mentionBackgroundColor: UIColor = .systemBlue,
+            otherMentionForegroundColor: UIColor = .label,
+            otherMentionBackgroundColor: UIColor = .systemGray5,
+            mentionHorizontalPadding: CGFloat = 6,
+            mentionVerticalPadding: CGFloat = 2,
+            mentionCornerRadius: CGFloat = 6,
+            suggestionForegroundColor: UIColor = .label,
+            suggestionBackgroundColor: UIColor = .secondarySystemBackground,
+            initialsBackgroundColors: [UIColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPink, .systemPurple, .systemTeal],
+            imageShape: MentionImageShape = .circle,
+            imageSize: CGFloat = 44,
+            rowHeight: CGFloat = 56,
+            showsAlphabeticalSections: Bool = true,
+            sectionHeaderHeight: CGFloat = 28,
+            sectionHeaderForegroundColor: UIColor = .secondaryLabel,
+            sectionHeaderBackgroundColor: UIColor = .tertiarySystemBackground,
+            maximumVisibleRows: Int = 4,
+            listWidth: CGFloat = 280,
+            cornerRadius: CGFloat = 10
+        ) {
+            self.suggestions = suggestions
+            self.selfMentionLabel = selfMentionLabel
+            self.mentionForegroundColor = mentionForegroundColor
+            self.mentionBackgroundColor = mentionBackgroundColor
+            self.otherMentionForegroundColor = otherMentionForegroundColor
+            self.otherMentionBackgroundColor = otherMentionBackgroundColor
+            self.mentionHorizontalPadding = mentionHorizontalPadding
+            self.mentionVerticalPadding = mentionVerticalPadding
+            self.mentionCornerRadius = mentionCornerRadius
+            self.suggestionForegroundColor = suggestionForegroundColor
+            self.suggestionBackgroundColor = suggestionBackgroundColor
+            self.initialsBackgroundColors = initialsBackgroundColors
+            self.imageShape = imageShape
+            self.imageSize = imageSize
+            self.rowHeight = rowHeight
+            self.showsAlphabeticalSections = showsAlphabeticalSections
+            self.sectionHeaderHeight = sectionHeaderHeight
+            self.sectionHeaderForegroundColor = sectionHeaderForegroundColor
+            self.sectionHeaderBackgroundColor = sectionHeaderBackgroundColor
+            self.maximumVisibleRows = maximumVisibleRows
+            self.listWidth = listWidth
+            self.cornerRadius = cornerRadius
+        }
+    }
+
+    public var mentionConfiguration: MentionConfiguration {
+        didSet {
+            guard isViewLoaded else { return }
+            applyMentionConfiguration()
+            updateMentionSuggestions()
+        }
+    }
+
     fileprivate enum EditorMode {
         case richText
         case html
@@ -66,9 +186,12 @@ public final class RichTextEditorViewController: UIViewController {
     private let placeholderLabel = UILabel()
     private let mentionTableView = UITableView(frame: .zero, style: .plain)
 
-    private let mentionSuggestions = ["Alice", "Bob", "Charlie", "David", "Emma", "Nikhil"]
-    private var filteredMentions: [String] = []
+    private typealias MentionSection = (title: String?, suggestions: [any MentionItem])
+
+    private var filteredMentions: [any MentionItem] = []
+    private var mentionSections: [MentionSection] = []
     private var mentionQueryRange: NSRange?
+    private let mentionImageCache = NSCache<NSURL, UIImage>()
     private var editorMode: EditorMode = .richText
     private var listMode: ListMode = .none
     private var orderedListCounter = 1
@@ -79,11 +202,13 @@ public final class RichTextEditorViewController: UIViewController {
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
 
-    public init() {
+    public init(mentionConfiguration: MentionConfiguration = MentionConfiguration()) {
+        self.mentionConfiguration = mentionConfiguration
         super.init(nibName: nil, bundle: nil)
     }
 
     public required init?(coder: NSCoder) {
+        mentionConfiguration = MentionConfiguration()
         super.init(coder: coder)
     }
 
@@ -149,13 +274,23 @@ private extension RichTextEditorViewController {
     func configureMentionTableView() {
         mentionTableView.dataSource = self
         mentionTableView.delegate = self
-        mentionTableView.rowHeight = 44
         mentionTableView.register(UITableViewCell.self, forCellReuseIdentifier: "MentionCell")
-        mentionTableView.layer.cornerRadius = 10
+        mentionTableView.separatorInset = .zero
+        mentionTableView.layoutMargins = .zero
+        mentionTableView.sectionHeaderTopPadding = 0
         mentionTableView.layer.borderWidth = 1
         mentionTableView.layer.borderColor = UIColor.separator.cgColor
         mentionTableView.isHidden = true
+        applyMentionConfiguration()
         view.addSubview(mentionTableView)
+    }
+
+    func applyMentionConfiguration() {
+        mentionTableView.rowHeight = max(1, mentionConfiguration.rowHeight)
+        mentionTableView.sectionHeaderHeight = mentionConfiguration.showsAlphabeticalSections ? max(1, mentionConfiguration.sectionHeaderHeight) : 0
+        mentionTableView.layer.cornerRadius = max(0, mentionConfiguration.cornerRadius)
+        mentionTableView.backgroundColor = mentionConfiguration.suggestionBackgroundColor
+        mentionTableView.reloadData()
     }
 
     func configureToolbar() {
@@ -1059,7 +1194,10 @@ private extension RichTextEditorViewController {
         let query = (editorTextView.text as NSString).substring(with: queryRange)
             .dropFirst()
             .lowercased()
-        filteredMentions = mentionSuggestions.filter { query.isEmpty || $0.lowercased().hasPrefix(query) }
+        filteredMentions = allMentionSuggestions()
+            .filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        mentionSections = makeMentionSections(from: filteredMentions)
         mentionQueryRange = queryRange
 
         guard !filteredMentions.isEmpty else {
@@ -1068,9 +1206,34 @@ private extension RichTextEditorViewController {
         }
 
         mentionTableView.reloadData()
-        positionMentionTable(at: queryRange.location)
+        positionMentionTable(at: editorTextView.selectedRange.location)
         mentionTableView.isHidden = false
         view.bringSubviewToFront(mentionTableView)
+    }
+
+    func allMentionSuggestions() -> [any MentionItem] {
+        var seenIdentifiers = Set<String>()
+        return mentionConfiguration.suggestions.filter {
+            seenIdentifiers.insert($0.mentionIdentifier).inserted
+        }
+    }
+
+    func isSelfMention(_ suggestion: any MentionItem) -> Bool {
+        suggestion.isSelfMention
+    }
+
+    private func makeMentionSections(from suggestions: [any MentionItem]) -> [MentionSection] {
+        guard mentionConfiguration.showsAlphabeticalSections else {
+            return [(title: nil, suggestions: suggestions)]
+        }
+
+        let grouped = Dictionary(grouping: suggestions) { suggestion in
+            guard let firstCharacter = suggestion.name.first, firstCharacter.isLetter else { return "#" }
+            return String(firstCharacter).uppercased()
+        }
+        return grouped.keys.sorted().map { title in
+            (title: title, suggestions: grouped[title] ?? [])
+        }
     }
 
     func positionMentionTable(at mentionLocation: Int) {
@@ -1079,14 +1242,19 @@ private extension RichTextEditorViewController {
         let caretFrame = editorTextView.convert(editorTextView.caretRect(for: textPosition), to: view)
         let margin: CGFloat = 12
         let spacing: CGFloat = 4
-        let width = min(280, view.bounds.width - (margin * 2))
-        let height = min(CGFloat(filteredMentions.count) * mentionTableView.rowHeight, 176)
+        let width = min(max(1, mentionConfiguration.listWidth), view.bounds.width - (margin * 2))
+        let visibleRows = min(filteredMentions.count, max(1, mentionConfiguration.maximumVisibleRows))
+        let visibleSectionCount = mentionConfiguration.showsAlphabeticalSections ? min(mentionSections.count, visibleRows) : 0
+        let desiredHeight = (CGFloat(visibleRows) * mentionTableView.rowHeight)
+            + (CGFloat(visibleSectionCount) * mentionTableView.sectionHeaderHeight)
         let x = min(max(caretFrame.minX, margin), view.bounds.width - width - margin)
+        let minimumTop = view.safeAreaInsets.top + margin
         let maximumBottom = toolbarScrollView.frame.minY - spacing
-        let belowCaretY = caretFrame.maxY + spacing
-        let y = belowCaretY + height <= maximumBottom
-            ? belowCaretY
-            : max(view.safeAreaInsets.top + margin, caretFrame.minY - height - spacing)
+        let availableBelow = max(0, maximumBottom - caretFrame.maxY - spacing)
+        let availableAbove = max(0, caretFrame.minY - spacing - minimumTop)
+        let placeBelow = availableBelow >= desiredHeight || availableBelow >= availableAbove
+        let height = min(desiredHeight, placeBelow ? availableBelow : availableAbove)
+        let y = placeBelow ? caretFrame.maxY + spacing : caretFrame.minY - spacing - height
 
         mentionTableView.frame = CGRect(x: x, y: y, width: width, height: height)
     }
@@ -1103,21 +1271,131 @@ private extension RichTextEditorViewController {
     func hideMentionSuggestions() {
         mentionQueryRange = nil
         filteredMentions = []
+        mentionSections = []
         mentionTableView.isHidden = true
     }
 
-    func insertMention(_ name: String) {
-        guard let queryRange = mentionQueryRange else { return }
+    func mentionSuggestion(at indexPath: IndexPath) -> (any MentionItem)? {
+        guard indexPath.section < mentionSections.count else { return nil }
+        let suggestions = mentionSections[indexPath.section].suggestions
+        guard indexPath.row < suggestions.count else { return nil }
+        return suggestions[indexPath.row]
+    }
 
-        var mentionAttributes = editorTextView.typingAttributes
-        mentionAttributes[.foregroundColor] = UIColor.white
-        mentionAttributes[.backgroundColor] = UIColor.systemBlue
+    func mentionImage(for suggestion: any MentionItem) -> UIImage {
+        switch suggestion.image {
+        case .uiImage(let image):
+            return image
+        case .initials(let initials):
+            return initialsImage(initials, colorSeed: suggestion.name)
+        case .url(let url):
+            return mentionImageCache.object(forKey: url as NSURL) ?? initialsImage(initials(for: suggestion.name), colorSeed: suggestion.name)
+        case nil:
+            return initialsImage(initials(for: suggestion.name), colorSeed: suggestion.name)
+        }
+    }
+
+    func loadMentionImage(for suggestion: any MentionItem, at indexPath: IndexPath) {
+        guard case .url(let url) = suggestion.image, mentionImageCache.object(forKey: url as NSURL) == nil else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
+            mentionImageCache.setObject(image, forKey: url as NSURL)
+            guard mentionSuggestion(at: indexPath)?.mentionIdentifier == suggestion.mentionIdentifier else { return }
+            mentionTableView.reloadRows(at: [indexPath], with: .none)
+        }
+    }
+
+    func initials(for name: String) -> String {
+        name.split(separator: " ")
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+    }
+
+    func initialsImage(_ initials: String, colorSeed: String) -> UIImage {
+        let imageSize = max(1, mentionConfiguration.imageSize)
+        let size = CGSize(width: imageSize, height: imageSize)
+        let bounds = CGRect(origin: .zero, size: size)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            initialsBackgroundColor(for: colorSeed).setFill()
+            avatarPath(in: bounds).fill()
+
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: imageSize * 0.36, weight: .semibold),
+                .foregroundColor: mentionConfiguration.mentionForegroundColor
+            ]
+            let text = initials as NSString
+            let textSize = text.size(withAttributes: attributes)
+            let origin = CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2)
+            text.draw(at: origin, withAttributes: attributes)
+        }
+    }
+
+    func initialsBackgroundColor(for seed: String) -> UIColor {
+        guard !mentionConfiguration.initialsBackgroundColors.isEmpty else {
+            return mentionConfiguration.mentionBackgroundColor
+        }
+
+        let index = seed.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }
+        let colorIndex = Int(UInt(bitPattern: index) % UInt(mentionConfiguration.initialsBackgroundColors.count))
+        return mentionConfiguration.initialsBackgroundColors[colorIndex]
+    }
+
+    func avatarPath(in bounds: CGRect) -> UIBezierPath {
+        switch mentionConfiguration.imageShape {
+        case .circle:
+            return UIBezierPath(ovalIn: bounds)
+        case .roundedRectangle(let cornerRadius):
+            return UIBezierPath(roundedRect: bounds, cornerRadius: max(0, cornerRadius))
+        }
+    }
+
+    func imageCornerRadius() -> CGFloat {
+        switch mentionConfiguration.imageShape {
+        case .circle:
+            return max(1, mentionConfiguration.imageSize) / 2
+        case .roundedRectangle(let cornerRadius):
+            return max(0, cornerRadius)
+        }
+    }
+
+    func mentionPillAttachment(for suggestion: any MentionItem) -> NSTextAttachment {
+        let isSelf = isSelfMention(suggestion)
+        let foregroundColor = isSelf ? mentionConfiguration.mentionForegroundColor : mentionConfiguration.otherMentionForegroundColor
+        let backgroundColor = isSelf ? mentionConfiguration.mentionBackgroundColor : mentionConfiguration.otherMentionBackgroundColor
+        let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
+        let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
+        let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
+        let text = suggestion.name as NSString
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foregroundColor]
+        let textSize = text.size(withAttributes: attributes)
+        let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            backgroundColor.setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: max(0, mentionConfiguration.mentionCornerRadius)).fill()
+            text.draw(at: CGPoint(x: horizontalPadding, y: verticalPadding), withAttributes: attributes)
+        }
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = CGRect(x: 0, y: font.descender - verticalPadding, width: size.width, height: size.height)
+        return attachment
+    }
+
+    func insertMention(_ suggestion: any MentionItem) {
+        guard let queryRange = mentionQueryRange else { return }
 
         var trailingAttributes = editorTextView.typingAttributes
         trailingAttributes.removeValue(forKey: .backgroundColor)
         trailingAttributes[.foregroundColor] = UIColor.label
 
-        let replacement = NSMutableAttributedString(string: "@\(name)", attributes: mentionAttributes)
+        let replacement = NSMutableAttributedString(attachment: mentionPillAttachment(for: suggestion))
         replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
@@ -1182,20 +1460,63 @@ extension RichTextEditorViewController: UITextViewDelegate {
 
 extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelegate {
 
+    public func numberOfSections(in tableView: UITableView) -> Int {
+        mentionSections.count
+    }
+
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        filteredMentions.count
+        mentionSections[section].suggestions.count
+    }
+
+    public func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard let title = mentionSections[section].title else { return nil }
+
+        let headerView = UIView()
+        headerView.backgroundColor = mentionConfiguration.sectionHeaderBackgroundColor
+
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = title
+        label.font = .preferredFont(forTextStyle: .caption1)
+        label.textColor = mentionConfiguration.sectionHeaderForegroundColor
+        headerView.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: headerView.trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: headerView.centerYAnchor)
+        ])
+        return headerView
     }
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "MentionCell", for: indexPath)
+        guard let suggestion = mentionSuggestion(at: indexPath) else { return cell }
         var configuration = cell.defaultContentConfiguration()
-        configuration.text = "@\(filteredMentions[indexPath.row])"
+        configuration.text = suggestion.name
+        configuration.textProperties.color = mentionConfiguration.suggestionForegroundColor
+        if isSelfMention(suggestion) {
+            configuration.secondaryText = mentionConfiguration.selfMentionLabel
+            configuration.secondaryTextProperties.color = mentionConfiguration.sectionHeaderForegroundColor
+        }
+        configuration.image = mentionImage(for: suggestion)
+        let imageSize = max(1, mentionConfiguration.imageSize)
+        configuration.imageProperties.maximumSize = CGSize(width: imageSize, height: imageSize)
+        configuration.imageProperties.cornerRadius = imageCornerRadius()
         cell.contentConfiguration = configuration
+        cell.backgroundColor = mentionConfiguration.suggestionBackgroundColor
+        cell.preservesSuperviewLayoutMargins = false
+        cell.layoutMargins = .zero
+        cell.separatorInset = mentionSections[indexPath.section].suggestions.count == 1
+            ? UIEdgeInsets(top: 0, left: tableView.bounds.width, bottom: 0, right: 0)
+            : .zero
+        loadMentionImage(for: suggestion, at: indexPath)
         return cell
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        insertMention(filteredMentions[indexPath.row])
+        guard let suggestion = mentionSuggestion(at: indexPath) else { return }
+        insertMention(suggestion)
     }
 }
 
