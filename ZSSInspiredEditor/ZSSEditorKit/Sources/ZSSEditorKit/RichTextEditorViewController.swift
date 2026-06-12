@@ -13,6 +13,11 @@ public final class RichTextEditorViewController: UIViewController {
         case roundedRectangle(cornerRadius: CGFloat)
     }
 
+    public enum MentionExportFormat {
+        case anchor
+        case custom((_ mention: any MentionItem, _ escapedName: String, _ escapedIdentifier: String) -> String)
+    }
+
     public protocol MentionItem {
         var mentionIdentifier: String { get }
         var name: String { get }
@@ -57,6 +62,8 @@ public final class RichTextEditorViewController: UIViewController {
         public var maximumVisibleRows: Int
         public var listWidth: CGFloat
         public var cornerRadius: CGFloat
+        public var exportFormat: MentionExportFormat
+        public var loadingText: String
 
         public init(
             suggestions: [any MentionItem] = [
@@ -87,7 +94,9 @@ public final class RichTextEditorViewController: UIViewController {
             sectionHeaderBackgroundColor: UIColor = .tertiarySystemBackground,
             maximumVisibleRows: Int = 4,
             listWidth: CGFloat = 280,
-            cornerRadius: CGFloat = 10
+            cornerRadius: CGFloat = 10,
+            exportFormat: MentionExportFormat = .anchor,
+            loadingText: String = "Loading..."
         ) {
             self.suggestions = suggestions
             self.selfMentionLabel = selfMentionLabel
@@ -111,6 +120,8 @@ public final class RichTextEditorViewController: UIViewController {
             self.maximumVisibleRows = maximumVisibleRows
             self.listWidth = listWidth
             self.cornerRadius = cornerRadius
+            self.exportFormat = exportFormat
+            self.loadingText = loadingText
         }
     }
 
@@ -187,6 +198,19 @@ public final class RichTextEditorViewController: UIViewController {
         }
     }
 
+    public var onMentionQueryChanged: ((String?) -> Void)?
+    public var onMentionInserted: ((any MentionItem) -> Void)?
+    public var onMentionRemoved: ((any MentionItem) -> Void)?
+    public private(set) var insertedMentions: [any MentionItem] = []
+
+    public var html: String {
+        htmlString()
+    }
+
+    public var attributedContent: NSAttributedString {
+        editorTextView.attributedText
+    }
+
     fileprivate enum EditorMode {
         case richText
         case html
@@ -256,6 +280,10 @@ public final class RichTextEditorViewController: UIViewController {
     private var filteredMentions: [any MentionItem] = []
     private var mentionSections: [MentionSection] = []
     private var mentionQueryRange: NSRange?
+    private var remoteMentionSuggestions: [any MentionItem] = []
+    private var isMentionSuggestionsLoading = false
+    private var lastMentionQuery: String?
+    private var mentionQueryTask: Task<Void, Never>?
     private let mentionImageCache = NSCache<NSURL, UIImage>()
     private var editorMode: EditorMode = .richText
     private var listMode: ListMode = .none
@@ -288,6 +316,34 @@ public final class RichTextEditorViewController: UIViewController {
         configureToolbar()
         configureTextViews()
         setInitialContent()
+    }
+
+    public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.key?.keyCode == .keyboardEscape }), mentionQueryRange != nil {
+            endMentionSession()
+            return
+        }
+
+        super.pressesBegan(presses, with: event)
+    }
+
+    public func updateMentionSuggestions(_ items: [any MentionItem]) {
+        guard onMentionQueryChanged != nil, mentionQueryRange != nil else { return }
+        remoteMentionSuggestions = uniqueMentionSuggestions(items)
+        isMentionSuggestionsLoading = false
+        filteredMentions = remoteMentionSuggestions
+        mentionSections = makeMentionSections(from: filteredMentions)
+        showMentionSuggestionsIfNeeded()
+    }
+
+    public func setMentionSuggestionsLoading(_ isLoading: Bool) {
+        guard onMentionQueryChanged != nil, mentionQueryRange != nil else { return }
+        isMentionSuggestionsLoading = isLoading
+        if isLoading {
+            mentionSections = []
+            filteredMentions = []
+        }
+        showMentionSuggestionsIfNeeded()
     }
 }
 
@@ -1377,6 +1433,10 @@ private extension RichTextEditorViewController {
 private extension RichTextEditorViewController {
 
     func htmlString() -> String {
+        mentionAwareHTMLString()
+    }
+
+    func defaultHTMLString() -> String {
         let range = NSRange(location: 0, length: editorTextView.attributedText.length)
         guard
             let data = try? editorTextView.attributedText.data(
@@ -1389,6 +1449,49 @@ private extension RichTextEditorViewController {
         }
 
         return html
+    }
+
+    func mentionAwareHTMLString() -> String {
+        let attributedText = editorTextView.attributedText ?? NSAttributedString()
+        var html = ""
+        var index = 0
+        while index < attributedText.length {
+            var effectiveRange = NSRange(location: 0, length: 0)
+            if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
+                html += exportedMentionHTML(for: mention)
+            } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
+                html += ""
+            } else {
+                let string = attributedText.attributedSubstring(from: effectiveRange).string
+                html += escapedHTMLText(string)
+            }
+            index = effectiveRange.upperBound
+        }
+        return html.replacingOccurrences(of: "\n", with: "<br>")
+    }
+
+    func exportedMentionHTML(for mention: any MentionItem) -> String {
+        let escapedName = escapedHTMLText(mention.name)
+        let escapedIdentifier = escapedHTMLAttribute(mention.mentionIdentifier)
+        switch mentionConfiguration.exportFormat {
+        case .anchor:
+            return "<a class=\"mention\" data-mention-id=\"\(escapedIdentifier)\">@\(escapedName)</a>"
+        case .custom(let formatter):
+            return formatter(mention, escapedName, escapedIdentifier)
+        }
+    }
+
+    func escapedHTMLText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    func escapedHTMLAttribute(_ text: String) -> String {
+        escapedHTMLText(text)
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
     }
 
     func syncHTMLToEditor() {
@@ -1405,6 +1508,7 @@ private extension RichTextEditorViewController {
         editorTextView.attributedText = attributedText ?? NSAttributedString(string: htmlTextView.text, attributes: defaultTypingAttributes())
         editorTextView.typingAttributes = defaultTypingAttributes()
         updatePlaceholder()
+        refreshInsertedMentions()
     }
 
     func linkTypingAttributes(url: URL) -> [NSAttributedString.Key: Any] {
@@ -1421,33 +1525,40 @@ private extension RichTextEditorViewController {
 
     func updateMentionSuggestions() {
         guard let queryRange = activeMentionQueryRange() else {
-            hideMentionSuggestions()
+            endMentionSession()
             return
         }
 
-        let query = (editorTextView.text as NSString).substring(with: queryRange)
+        let query = String((editorTextView.text as NSString).substring(with: queryRange)
             .dropFirst()
-            .lowercased()
-        filteredMentions = allMentionSuggestions()
-            .filter { query.isEmpty || $0.name.lowercased().hasPrefix(query) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        mentionSections = makeMentionSections(from: filteredMentions)
+        )
         mentionQueryRange = queryRange
 
-        guard !filteredMentions.isEmpty else {
-            hideMentionSuggestions()
+        if onMentionQueryChanged != nil {
+            if lastMentionQuery != query {
+                scheduleMentionQueryChanged(query)
+            }
+            filteredMentions = remoteMentionSuggestions
+            mentionSections = makeMentionSections(from: filteredMentions)
+            showMentionSuggestionsIfNeeded()
             return
         }
 
-        mentionTableView.reloadData()
-        positionMentionTable(at: editorTextView.selectedRange.location)
-        mentionTableView.isHidden = false
-        view.bringSubviewToFront(mentionTableView)
+        let lowercaseQuery = query.lowercased()
+        filteredMentions = allMentionSuggestions()
+            .filter { lowercaseQuery.isEmpty || $0.name.lowercased().hasPrefix(lowercaseQuery) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        mentionSections = makeMentionSections(from: filteredMentions)
+        showMentionSuggestionsIfNeeded()
     }
 
     func allMentionSuggestions() -> [any MentionItem] {
+        uniqueMentionSuggestions(mentionConfiguration.suggestions)
+    }
+
+    func uniqueMentionSuggestions(_ suggestions: [any MentionItem]) -> [any MentionItem] {
         var seenIdentifiers = Set<String>()
-        return mentionConfiguration.suggestions.filter {
+        return suggestions.filter {
             seenIdentifiers.insert($0.mentionIdentifier).inserted
         }
     }
@@ -1470,6 +1581,23 @@ private extension RichTextEditorViewController {
         }
     }
 
+    func showMentionSuggestionsIfNeeded() {
+        guard mentionQueryRange != nil else {
+            hideMentionSuggestions()
+            return
+        }
+
+        guard isMentionSuggestionsLoading || !filteredMentions.isEmpty else {
+            hideMentionSuggestions(endingSession: false, preservesQuery: onMentionQueryChanged != nil)
+            return
+        }
+
+        mentionTableView.reloadData()
+        positionMentionTable(at: editorTextView.selectedRange.location)
+        mentionTableView.isHidden = false
+        view.bringSubviewToFront(mentionTableView)
+    }
+
     func positionMentionTable(at mentionLocation: Int) {
         guard let textPosition = editorTextView.position(from: editorTextView.beginningOfDocument, offset: mentionLocation) else { return }
 
@@ -1477,7 +1605,8 @@ private extension RichTextEditorViewController {
         let margin: CGFloat = 12
         let spacing: CGFloat = 4
         let width = min(max(1, mentionConfiguration.listWidth), view.bounds.width - (margin * 2))
-        let visibleRows = min(filteredMentions.count, max(1, mentionConfiguration.maximumVisibleRows))
+        let rowCount = isMentionSuggestionsLoading ? 1 : filteredMentions.count
+        let visibleRows = min(rowCount, max(1, mentionConfiguration.maximumVisibleRows))
         let visibleSectionCount = mentionConfiguration.showsAlphabeticalSections ? min(mentionSections.count, visibleRows) : 0
         let desiredHeight = (CGFloat(visibleRows) * mentionTableView.rowHeight)
             + (CGFloat(visibleSectionCount) * mentionTableView.sectionHeaderHeight)
@@ -1502,11 +1631,49 @@ private extension RichTextEditorViewController {
         return expression?.firstMatch(in: editorTextView.text, range: prefixRange)?.range
     }
 
-    func hideMentionSuggestions() {
-        mentionQueryRange = nil
+    func hideMentionSuggestions(endingSession: Bool = true, preservesQuery: Bool = false) {
+        if !preservesQuery {
+            mentionQueryRange = nil
+        }
         filteredMentions = []
         mentionSections = []
+        if !preservesQuery {
+            remoteMentionSuggestions = []
+        }
+        isMentionSuggestionsLoading = false
         mentionTableView.isHidden = true
+        if endingSession {
+            cancelPendingMentionQuery()
+        }
+    }
+
+    func endMentionSession() {
+        guard mentionQueryRange != nil || lastMentionQuery != nil || !mentionTableView.isHidden else {
+            hideMentionSuggestions()
+            return
+        }
+
+        hideMentionSuggestions()
+        onMentionQueryChanged?(nil)
+    }
+
+    func scheduleMentionQueryChanged(_ query: String) {
+        lastMentionQuery = query
+        mentionQueryTask?.cancel()
+        mentionQueryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, self.mentionQueryRange != nil, self.lastMentionQuery == query else { return }
+                self.onMentionQueryChanged?(query)
+            }
+        }
+    }
+
+    func cancelPendingMentionQuery() {
+        mentionQueryTask?.cancel()
+        mentionQueryTask = nil
+        lastMentionQuery = nil
     }
 
     func mentionSuggestion(at indexPath: IndexPath) -> (any MentionItem)? {
@@ -1630,6 +1797,7 @@ private extension RichTextEditorViewController {
         trailingAttributes[.foregroundColor] = UIColor.label
 
         let replacement = NSMutableAttributedString(attachment: mentionPillAttachment(for: suggestion))
+        replacement.addAttribute(.zssMentionItem, value: suggestion, range: NSRange(location: 0, length: replacement.length))
         replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
@@ -1637,9 +1805,37 @@ private extension RichTextEditorViewController {
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: queryRange.location + replacement.length, length: 0)
         editorTextView.typingAttributes = trailingAttributes
-        hideMentionSuggestions()
+        endMentionSession()
         updatePlaceholder()
         updateToolbarSelectionState()
+        refreshInsertedMentions()
+        onMentionInserted?(suggestion)
+    }
+
+    func refreshInsertedMentions() {
+        let previousMentions = insertedMentions
+        let currentMentions = currentMentionItems()
+        insertedMentions = currentMentions
+
+        var currentCounts = Dictionary(currentMentions.map { ($0.mentionIdentifier, 1) }, uniquingKeysWith: +)
+        for mention in previousMentions {
+            let remainingCount = currentCounts[mention.mentionIdentifier] ?? 0
+            if remainingCount > 0 {
+                currentCounts[mention.mentionIdentifier] = remainingCount - 1
+            } else {
+                onMentionRemoved?(mention)
+            }
+        }
+    }
+
+    func currentMentionItems() -> [any MentionItem] {
+        let attributedText = editorTextView.attributedText ?? NSAttributedString()
+        var mentions: [any MentionItem] = []
+        attributedText.enumerateAttribute(.zssMentionItem, in: NSRange(location: 0, length: attributedText.length)) { value, _, _ in
+            guard let mention = value as? any MentionItem else { return }
+            mentions.append(mention)
+        }
+        return mentions
     }
 }
 
@@ -1651,6 +1847,7 @@ extension RichTextEditorViewController: UITextViewDelegate {
             updatePlaceholder()
             updateToolbarSelectionState()
             updateMentionSuggestions()
+            refreshInsertedMentions()
         }
     }
 
@@ -1695,14 +1892,17 @@ extension RichTextEditorViewController: UITextViewDelegate {
 extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelegate {
 
     public func numberOfSections(in tableView: UITableView) -> Int {
-        mentionSections.count
+        if isMentionSuggestionsLoading { return 1 }
+        return mentionSections.count
     }
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        mentionSections[section].suggestions.count
+        if isMentionSuggestionsLoading { return 1 }
+        return mentionSections[section].suggestions.count
     }
 
     public func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard !isMentionSuggestionsLoading else { return nil }
         guard let title = mentionSections[section].title else { return nil }
 
         let headerView = UIView()
@@ -1725,6 +1925,17 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "MentionCell", for: indexPath)
+        if isMentionSuggestionsLoading {
+            var configuration = cell.defaultContentConfiguration()
+            configuration.text = mentionConfiguration.loadingText
+            configuration.textProperties.color = mentionConfiguration.sectionHeaderForegroundColor
+            configuration.image = UIImage(systemName: "clock")
+            cell.contentConfiguration = configuration
+            cell.backgroundColor = mentionConfiguration.suggestionBackgroundColor
+            cell.selectionStyle = .none
+            return cell
+        }
+
         guard let suggestion = mentionSuggestion(at: indexPath) else { return cell }
         var configuration = cell.defaultContentConfiguration()
         configuration.text = suggestion.name
@@ -1741,6 +1952,7 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
         cell.backgroundColor = mentionConfiguration.suggestionBackgroundColor
         cell.preservesSuperviewLayoutMargins = false
         cell.layoutMargins = .zero
+        cell.selectionStyle = .default
         cell.separatorInset = mentionSections[indexPath.section].suggestions.count == 1
             ? UIEdgeInsets(top: 0, left: tableView.bounds.width, bottom: 0, right: 0)
             : .zero
@@ -1749,9 +1961,14 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        guard !isMentionSuggestionsLoading else { return }
         guard let suggestion = mentionSuggestion(at: indexPath) else { return }
         insertMention(suggestion)
     }
+}
+
+private extension NSAttributedString.Key {
+    static let zssMentionItem = NSAttributedString.Key("com.zssinspirededitor.mentionItem")
 }
 
 private extension String {
