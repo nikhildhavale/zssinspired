@@ -762,13 +762,7 @@ private extension RichTextEditorViewController {
     private func setMode(_ mode: EditorMode) {
         editorMode = mode
         hideMentionSuggestions()
-        editorTextView.isHidden = mode != .richText
-        htmlTextView.isHidden = mode != .html
-        if mode == .richText {
-            editorTextView.becomeFirstResponder()
-        } else {
-            htmlTextView.becomeFirstResponder()
-        }
+        editorTextView.becomeFirstResponder()
     }
 
     private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
