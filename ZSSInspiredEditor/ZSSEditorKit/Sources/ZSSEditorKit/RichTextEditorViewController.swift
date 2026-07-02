@@ -295,6 +295,7 @@ public final class RichTextEditorViewController: UIViewController {
     private var selectedHeadingStyle: HeadingStyle = .paragraph
     private var isSyncingText = false
     private var toolbarButtons: [ToolbarItem: UIButton] = [:]
+    private weak var listsMenuButton: UIButton?
 
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
@@ -453,7 +454,7 @@ private extension RichTextEditorViewController {
         toolbarStackView.addArrangedSubview(separator())
 
         addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
-        addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
+        listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
         addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
         addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
         toolbarStackView.addArrangedSubview(separator())
@@ -532,7 +533,7 @@ private extension RichTextEditorViewController {
         }
     }
 
-    func addToolbarMenuButton(title: String, imageName: String, menu: UIMenu) {
+    func addToolbarMenuButton(title: String, imageName: String, menu: UIMenu) -> UIButton {
         var configuration = UIButton.Configuration.bordered()
         configuration.cornerStyle = .medium
         configuration.baseForegroundColor = .label
@@ -546,6 +547,7 @@ private extension RichTextEditorViewController {
         button.menu = menu
         button.showsMenuAsPrimaryAction = true
         toolbarStackView.addArrangedSubview(button)
+        return button
     }
 
     func addPlusButton(behavior: PlusButtonBehavior) {
@@ -617,9 +619,22 @@ private extension RichTextEditorViewController {
     }
 
     func listMenu() -> UIMenu {
-        UIMenu(children: [
-            UIAction(title: "Bullet List", image: UIImage(systemName: "list.bullet")) { [weak self] _ in self?.toggleUnorderedList() },
-            UIAction(title: "Numbered List", image: UIImage(systemName: "list.number")) { [weak self] _ in self?.toggleOrderedList() },
+        let currentMode = currentListMode()
+        var bulletAction = UIAction(title: "Bullet List", image: UIImage(systemName: "list.bullet")) { [weak self] _ in self?.toggleUnorderedList() }
+        var numberedAction = UIAction(title: "Numbered List", image: UIImage(systemName: "list.number")) { [weak self] _ in self?.toggleOrderedList() }
+
+        if currentMode == .unordered {
+            bulletAction.attributes.insert(.disabled)
+            bulletAction.state = .on
+        }
+        if currentMode == .ordered {
+            numberedAction.attributes.insert(.disabled)
+            numberedAction.state = .on
+        }
+
+        return UIMenu(children: [
+            bulletAction,
+            numberedAction,
             UIAction(title: "Increase Indent", image: UIImage(systemName: "increase.indent")) { [weak self] _ in self?.indentSelection() },
             UIAction(title: "Decrease Indent", image: UIImage(systemName: "decrease.indent")) { [weak self] _ in self?.outdentSelection() }
         ])
@@ -1146,6 +1161,8 @@ private extension RichTextEditorViewController {
             setToolbarButton(.unorderedList, selected: false)
             setToolbarButton(.orderedList, selected: false)
         }
+
+        listsMenuButton?.menu = listMenu()
     }
 
     private func setToolbarButton(_ item: ToolbarItem, selected: Bool) {
