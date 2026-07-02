@@ -778,10 +778,14 @@ private extension RichTextEditorViewController {
     }
 
     private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
-        guard editorMode == .richText else {
-            return
+        if editorMode == .html {
+            syncHTMLToEditor()
         }
         formattingBlock()
+        if editorMode == .html {
+            htmlTextView.text = htmlString()
+            htmlTextView.textColor = .label
+        }
     }
 
     @objc func toggleBold() {
