@@ -103,8 +103,11 @@ final class ViewController: UIViewController {
 
     private func showMarkdownView() {
         let markdownText = editor.markdown
-        let markdownViewController = MarkdownViewController(markdown: markdownText)
-        let navigationController = UINavigationController(rootViewController: markdownViewController)
-        present(navigationController, animated: true)
+        let alert = UIAlertController(title: "Markdown", message: markdownText.isEmpty ? "No content" : markdownText, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
+            UIPasteboard.general.string = markdownText
+        })
+        alert.addAction(UIAlertAction(title: "Done", style: .cancel))
+        present(alert, animated: true)
     }
 }

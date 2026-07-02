@@ -785,7 +785,7 @@ private extension RichTextEditorViewController {
             removeListMarkersFromCurrentParagraphs()
         } else {
             listMode = .ordered
-            orderedListCounter = nextOrderedListNumber()
+            orderedListCounter = 1
             applyListMarkersToCurrentParagraphs()
         }
     }
@@ -1293,6 +1293,7 @@ private extension RichTextEditorViewController {
             return
         }
 
+        let selection = editorTextView.selectedRange
         let paragraphRanges = paragraphRanges(in: range, textLength: nsText.length)
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         var locationDelta = 0
@@ -2029,17 +2030,17 @@ private extension String {
 
     var listMarkerRange: NSRange? {
         let nsString = self as NSString
-        if range(of: #"^\s*•\s"#, options: .regularExpression) != nil {
-            return nsString.range(of: #"^\s*•\s"#, options: .regularExpression)
+        if range(of: #"^\s*•\s?"#, options: .regularExpression) != nil {
+            return nsString.range(of: #"^\s*•\s?"#, options: .regularExpression)
         }
 
-        let orderedRange = nsString.range(of: #"^\s*\d+\.\s"#, options: .regularExpression)
+        let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
         return orderedRange.location == NSNotFound ? nil : orderedRange
     }
 
     var orderedListNumber: Int? {
         let nsString = self as NSString
-        let range = nsString.range(of: #"^\s*(\d+)\.\s"#, options: .regularExpression)
+        let range = nsString.range(of: #"^\s*(\d+)\.\s*"#, options: .regularExpression)
         guard range.location != NSNotFound else { return nil }
 
         let marker = nsString.substring(with: range)
