@@ -531,6 +531,7 @@ private extension RichTextEditorViewController {
 
         htmlTextView.delegate = self
         htmlTextView.font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        htmlTextView.textColor = .label
         htmlTextView.backgroundColor = .systemGroupedBackground
         htmlTextView.textContainerInset = editorTextView.textContainerInset
         htmlTextView.autocorrectionType = .no
@@ -727,6 +728,7 @@ private extension RichTextEditorViewController {
         }
         var markdownAction = UIAction(title: "Markdown", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
             self?.htmlTextView.text = self?.htmlString() ?? ""
+            self?.htmlTextView.textColor = .label
             self?.setMode(.html)
             self?.configureToolbar()
         }
