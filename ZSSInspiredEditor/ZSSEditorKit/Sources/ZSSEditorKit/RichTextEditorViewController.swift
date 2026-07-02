@@ -1623,6 +1623,15 @@ private extension RichTextEditorViewController {
         return attributes
     }
 
+    func headingMarkdownPrefix(for font: UIFont) -> String? {
+        guard font.fontDescriptor.symbolicTraits.contains(.traitBold) else { return nil }
+        let headingLevels: [(style: HeadingStyle, level: Int)] = [(.h1, 1), (.h2, 2), (.h3, 3), (.h4, 4), (.h5, 5)]
+        for entry in headingLevels where abs(font.pointSize - entry.style.pointSize) < 0.5 {
+            return String(repeating: "#", count: entry.level) + " "
+        }
+        return nil
+    }
+
     func attributedStringToMarkdown(_ attributedString: NSAttributedString) -> String {
         var markdown = ""
         var index = 0
@@ -1637,31 +1646,47 @@ private extension RichTextEditorViewController {
                 markdown += "[image]"
             } else {
                 let text = attributedText.attributedSubstring(from: effectiveRange).string
-                var formattedText = text
+                var core = text
+                var trailingNewlines = ""
+                while core.hasSuffix("\n") {
+                    core.removeLast()
+                    trailingNewlines += "\n"
+                }
 
-                if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
-                    let traits = font.fontDescriptor.symbolicTraits
-                    if traits.contains(.traitBold) {
-                        formattedText = "**\(formattedText)**"
+                var formattedText = core
+
+                if !core.isEmpty {
+                    if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
+                        if let headingPrefix = headingMarkdownPrefix(for: font) {
+                            formattedText = core
+                                .components(separatedBy: "\n")
+                                .map { $0.isEmpty ? $0 : headingPrefix + $0 }
+                                .joined(separator: "\n")
+                        } else {
+                            let traits = font.fontDescriptor.symbolicTraits
+                            if traits.contains(.traitBold) {
+                                formattedText = "**\(formattedText)**"
+                            }
+                            if traits.contains(.traitItalic) {
+                                formattedText = "*\(formattedText)*"
+                            }
+                        }
                     }
-                    if traits.contains(.traitItalic) {
-                        formattedText = "*\(formattedText)*"
+
+                    if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
+                        formattedText = "__\(formattedText)__"
+                    }
+
+                    if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
+                        formattedText = "~~\(formattedText)~~"
+                    }
+
+                    if let link = attributedText.attribute(.link, at: index, effectiveRange: nil) as? URL {
+                        formattedText = "[\(formattedText)](\(link.absoluteString))"
                     }
                 }
 
-                if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
-                    formattedText = "__\(formattedText)__"
-                }
-
-                if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
-                    formattedText = "~~\(formattedText)~~"
-                }
-
-                if let link = attributedText.attribute(.link, at: index, effectiveRange: nil) as? URL {
-                    formattedText = "[\(formattedText)](\(link.absoluteString))"
-                }
-
-                markdown += formattedText
+                markdown += formattedText + trailingNewlines
             }
             index = effectiveRange.upperBound
         }
