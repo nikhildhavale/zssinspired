@@ -1043,8 +1043,27 @@ private extension RichTextEditorViewController {
         }
 
         let selection = editorTextView.selectedRange
-        let location = min(selection.location, text.length - 1)
-        var range = text.paragraphRange(for: NSRange(location: location, length: max(selection.length, 1)))
+
+        if selection.length > 0 {
+            let location = min(selection.location, text.length - 1)
+            var range = text.paragraphRange(for: NSRange(location: location, length: max(selection.length, 1)))
+            if range.upperBound > editorTextView.attributedText.length {
+                range.length = editorTextView.attributedText.length - range.location
+            }
+            return range
+        }
+
+        let cursorPos = selection.location
+
+        if cursorPos == text.length && cursorPos > 0 {
+            let prevChar = text.substring(with: NSRange(location: cursorPos - 1, length: 1))
+            if prevChar == "\n" {
+                return NSRange(location: cursorPos, length: 0)
+            }
+        }
+
+        let location = min(cursorPos, text.length - 1)
+        var range = text.paragraphRange(for: NSRange(location: location, length: 1))
         if range.upperBound > editorTextView.attributedText.length {
             range.length = editorTextView.attributedText.length - range.location
         }
@@ -1293,44 +1312,30 @@ private extension RichTextEditorViewController {
             return
         }
 
-        let selection = editorTextView.selectedRange
-        let nsText_mutable = editorTextView.text as NSString
-
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
-        var locationDelta = 0
-        var currentNumber = orderedListCounter
+        guard range.location >= 0 && range.location + range.length <= mutableText.string.count else { return }
 
-        let paragraphRanges = paragraphRanges(in: range, textLength: nsText.length)
+        let paragraph = (mutableText.string as NSString).substring(with: range)
 
-        for paragraphRange in paragraphRanges {
-            let adjustedLocation = paragraphRange.location + locationDelta
-            let adjustedRange = NSRange(location: adjustedLocation, length: paragraphRange.length)
-            guard adjustedRange.length > 0 && adjustedRange.location + adjustedRange.length <= mutableText.length else { continue }
-
-            let paragraph = (mutableText.string as NSString).substring(with: adjustedRange)
-
-            if paragraph.hasListMarker {
-                continue
-            }
-
-            let marker: String
-            switch listMode {
-            case .unordered:
-                marker = "• "
-            case .ordered:
-                marker = "\(currentNumber). "
-                currentNumber += 1
-            case .none:
-                return
-            }
-
-            mutableText.insert(NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), at: adjustedLocation)
-            locationDelta += marker.count
+        if paragraph.hasListMarker {
+            updateToolbarSelectionState()
+            return
         }
 
-        orderedListCounter = currentNumber
+        let marker: String
+        switch listMode {
+        case .unordered:
+            marker = "• "
+        case .ordered:
+            marker = "\(orderedListCounter). "
+            orderedListCounter += 1
+        case .none:
+            return
+        }
+
+        mutableText.insert(NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), at: range.location)
         editorTextView.attributedText = mutableText
-        editorTextView.selectedRange = NSRange(location: range.location + locationDelta, length: 0)
+        editorTextView.selectedRange = NSRange(location: range.location + marker.count, length: 0)
         updatePlaceholder()
         updateToolbarSelectionState()
     }
