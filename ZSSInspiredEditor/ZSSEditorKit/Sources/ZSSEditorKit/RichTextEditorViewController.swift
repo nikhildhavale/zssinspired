@@ -271,6 +271,39 @@ public final class RichTextEditorViewController: UIViewController {
         case backgroundColor
     }
 
+    public enum ContentMode {
+        case richText
+        case markdown
+    }
+
+    fileprivate enum ToolbarOption {
+        case textStyle
+        case bold
+        case italic
+        case underline
+        case strikeThrough
+        case baseline
+        case clear
+        case alignment
+        case lists
+        case links
+        case colors
+        case undoRedo
+        case separator
+    }
+
+    private let richTextToolbarOptions: [ToolbarOption] = [
+        .textStyle, .bold, .italic, .underline, .strikeThrough, .baseline, .clear, .separator,
+        .alignment, .lists, .links, .colors, .separator,
+        .undoRedo
+    ]
+
+    private let markdownToolbarOptions: [ToolbarOption] = [
+        .textStyle, .bold, .italic, .separator,
+        .lists, .links, .separator,
+        .undoRedo
+    ]
+
     private let editorTextView = UITextView()
     private let htmlTextView = UITextView()
     private let toolbarScrollView = UIScrollView()
@@ -289,6 +322,7 @@ public final class RichTextEditorViewController: UIViewController {
     private var mentionQueryTask: Task<Void, Never>?
     private let mentionImageCache = NSCache<NSURL, UIImage>()
     private var editorMode: EditorMode = .richText
+    private var contentMode: ContentMode = .richText
     private var listMode: ListMode = .none
     private var orderedListCounter = 1
     private var selectedHeadingStyle: HeadingStyle = .paragraph
@@ -435,23 +469,41 @@ private extension RichTextEditorViewController {
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
-        addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
-        addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
-        addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
-        addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
-        addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
-        addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
+        addToolbarMenuButton(title: "Mode", imageName: "square.2.layers.3d", menu: modeSelectionMenu())
         toolbarStackView.addArrangedSubview(separator())
 
-        addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
-        listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
-        addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
-        addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
-        toolbarStackView.addArrangedSubview(separator())
-
-        addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
-        addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
+        let options = contentMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
+        for option in options {
+            switch option {
+            case .textStyle:
+                addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
+            case .bold:
+                addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
+            case .italic:
+                addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
+            case .underline:
+                addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
+            case .strikeThrough:
+                addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
+            case .baseline:
+                addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
+            case .clear:
+                addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
+            case .alignment:
+                addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
+            case .lists:
+                listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
+            case .links:
+                addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
+            case .colors:
+                addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
+            case .undoRedo:
+                addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
+                addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
+            case .separator:
+                toolbarStackView.addArrangedSubview(separator())
+            }
+        }
     }
 
     func configureTextViews() {
@@ -663,6 +715,31 @@ private extension RichTextEditorViewController {
             removeAttribute(attribute, range: editorTextView.selectedRange)
         })
         return UIMenu(title: title, image: UIImage(systemName: imageName), children: actions)
+    }
+
+    func modeSelectionMenu() -> UIMenu {
+        let richTextAction = UIAction(
+            title: "Rich Text",
+            image: UIImage(systemName: "textformat"),
+            state: contentMode == .richText ? .on : .off
+        ) { [weak self] _ in
+            self?.setContentMode(.richText)
+        }
+        let markdownAction = UIAction(
+            title: "Markdown",
+            image: UIImage(systemName: "number"),
+            state: contentMode == .markdown ? .on : .off
+        ) { [weak self] _ in
+            self?.setContentMode(.markdown)
+        }
+        return UIMenu(children: [richTextAction, markdownAction])
+    }
+
+    func setContentMode(_ mode: ContentMode) {
+        guard contentMode != mode else { return }
+        contentMode = mode
+        configureToolbar()
+        updateToolbarSelectionState()
     }
 
     func separator() -> UIView {
