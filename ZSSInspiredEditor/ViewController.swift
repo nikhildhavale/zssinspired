@@ -103,36 +103,8 @@ final class ViewController: UIViewController {
 
     private func showMarkdownView() {
         let markdownText = editor.markdown
-        let alert = UIAlertController(
-            title: "Markdown View",
-            message: markdownText.isEmpty ? "No content to display" : nil,
-            preferredStyle: .alert
-        )
-
-        if !markdownText.isEmpty {
-            alert.title = "Markdown Preview"
-            let textView = UITextView()
-            textView.text = markdownText
-            textView.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-            textView.isEditable = false
-            textView.translatesAutoresizingMaskIntoConstraints = false
-            textView.backgroundColor = .systemBackground
-            textView.textColor = .label
-
-            alert.view.addSubview(textView)
-            NSLayoutConstraint.activate([
-                textView.topAnchor.constraint(equalTo: alert.view.topAnchor, constant: 60),
-                textView.leadingAnchor.constraint(equalTo: alert.view.leadingAnchor, constant: 8),
-                textView.trailingAnchor.constraint(equalTo: alert.view.trailingAnchor, constant: -8),
-                textView.bottomAnchor.constraint(equalTo: alert.view.bottomAnchor, constant: -60),
-                alert.view.heightAnchor.constraint(greaterThanOrEqualToConstant: 300)
-            ])
-        }
-
-        alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
-            UIPasteboard.general.string = markdownText
-        })
-        alert.addAction(UIAlertAction(title: "Close", style: .cancel))
-        present(alert, animated: true)
+        let markdownViewController = MarkdownViewController(markdown: markdownText)
+        let navigationController = UINavigationController(rootViewController: markdownViewController)
+        present(navigationController, animated: true)
     }
 }
