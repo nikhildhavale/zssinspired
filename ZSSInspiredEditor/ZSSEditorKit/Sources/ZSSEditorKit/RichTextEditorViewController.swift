@@ -325,6 +325,10 @@ public final class RichTextEditorViewController: UIViewController {
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
 
+    private var activeTextView: UITextView {
+        editorMode == .richText ? editorTextView : htmlTextView
+    }
+
     public init(
         mentionConfiguration: MentionConfiguration = MentionConfiguration(),
         toolbarConfiguration: ToolbarConfiguration = ToolbarConfiguration()
@@ -771,41 +775,66 @@ private extension RichTextEditorViewController {
         }
     }
 
+    private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
+        if editorMode == .html {
+            syncHTMLToEditor()
+        }
+        formattingBlock()
+        if editorMode == .html {
+            htmlTextView.text = htmlString()
+        }
+    }
+
     @objc func toggleBold() {
-        toggleFontTrait(.traitBold)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleFontTrait(.traitBold)
+        }
     }
 
     @objc func toggleItalic() {
-        toggleFontTrait(.traitItalic)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleFontTrait(.traitItalic)
+        }
     }
 
     @objc func toggleUnderlineStyle() {
-        toggleAttribute(.underlineStyle, enabledValue: NSUnderlineStyle.single.rawValue)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleAttribute(.underlineStyle, enabledValue: NSUnderlineStyle.single.rawValue)
+        }
     }
 
     @objc func toggleStrikeThroughStyle() {
-        toggleAttribute(.strikethroughStyle, enabledValue: NSUnderlineStyle.single.rawValue)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleAttribute(.strikethroughStyle, enabledValue: NSUnderlineStyle.single.rawValue)
+        }
     }
 
     @objc func toggleSubscript() {
-        toggleExclusiveBaseline(offset: -5)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleExclusiveBaseline(offset: -5)
+        }
     }
 
     @objc func toggleSuperscript() {
-        toggleExclusiveBaseline(offset: 5)
+        applyFormattingInBothModes { [weak self] in
+            self?.toggleExclusiveBaseline(offset: 5)
+        }
     }
 
     @objc func removeFormatting() {
-        let range = editorTextView.selectedRange
-        guard range.length > 0 else {
-            editorTextView.typingAttributes = defaultTypingAttributes()
-            updateToolbarSelectionState()
-            return
-        }
+        applyFormattingInBothModes { [weak self] in
+            guard let self else { return }
+            let range = editorTextView.selectedRange
+            guard range.length > 0 else {
+                editorTextView.typingAttributes = defaultTypingAttributes()
+                updateToolbarSelectionState()
+                return
+            }
 
-        let plainText = (editorTextView.text as NSString).substring(with: range)
-        let replacement = NSAttributedString(string: plainText, attributes: defaultTypingAttributes())
-        replaceSelection(with: replacement, selectedOffset: replacement.length)
+            let plainText = (editorTextView.text as NSString).substring(with: range)
+            let replacement = NSAttributedString(string: plainText, attributes: defaultTypingAttributes())
+            replaceSelection(with: replacement, selectedOffset: replacement.length)
+        }
     }
 
     @objc func applyHeadingStyle(_ sender: UIButton) {
@@ -848,47 +877,57 @@ private extension RichTextEditorViewController {
     }
 
     @objc func toggleUnorderedList() {
-        if listMode == .unordered {
-            listMode = .none
-            removeListMarkersFromCurrentParagraphs()
-        } else if listMode == .ordered {
-            listMode = .unordered
-            removeListMarkersFromCurrentParagraphs()
-            applyListMarkersToCurrentParagraphs()
-        } else {
-            listMode = .unordered
-            orderedListCounter = 1
-            applyListMarkersToCurrentParagraphs()
+        applyFormattingInBothModes { [weak self] in
+            guard let self else { return }
+            if listMode == .unordered {
+                listMode = .none
+                removeListMarkersFromCurrentParagraphs()
+            } else if listMode == .ordered {
+                listMode = .unordered
+                removeListMarkersFromCurrentParagraphs()
+                applyListMarkersToCurrentParagraphs()
+            } else {
+                listMode = .unordered
+                orderedListCounter = 1
+                applyListMarkersToCurrentParagraphs()
+            }
         }
     }
 
     @objc func toggleOrderedList() {
-        if listMode == .ordered {
-            listMode = .none
-            removeListMarkersFromCurrentParagraphs()
-        } else if listMode == .unordered {
-            listMode = .ordered
-            orderedListCounter = 1
-            removeListMarkersFromCurrentParagraphs()
-            applyListMarkersToCurrentParagraphs()
-        } else {
-            listMode = .ordered
-            orderedListCounter = 1
-            applyListMarkersToCurrentParagraphs()
+        applyFormattingInBothModes { [weak self] in
+            guard let self else { return }
+            if listMode == .ordered {
+                listMode = .none
+                removeListMarkersFromCurrentParagraphs()
+            } else if listMode == .unordered {
+                listMode = .ordered
+                orderedListCounter = 1
+                removeListMarkersFromCurrentParagraphs()
+                applyListMarkersToCurrentParagraphs()
+            } else {
+                listMode = .ordered
+                orderedListCounter = 1
+                applyListMarkersToCurrentParagraphs()
+            }
         }
     }
 
     @objc func indentSelection() {
-        updateParagraphStyle { style in
-            style.firstLineHeadIndent += 24
-            style.headIndent += 24
+        applyFormattingInBothModes { [weak self] in
+            self?.updateParagraphStyle { style in
+                style.firstLineHeadIndent += 24
+                style.headIndent += 24
+            }
         }
     }
 
     @objc func outdentSelection() {
-        updateParagraphStyle { style in
-            style.firstLineHeadIndent = max(0, style.firstLineHeadIndent - 24)
-            style.headIndent = max(0, style.headIndent - 24)
+        applyFormattingInBothModes { [weak self] in
+            self?.updateParagraphStyle { style in
+                style.firstLineHeadIndent = max(0, style.firstLineHeadIndent - 24)
+                style.headIndent = max(0, style.headIndent - 24)
+            }
         }
     }
 
@@ -924,10 +963,13 @@ private extension RichTextEditorViewController {
                 return
             }
 
-            let title = displayText.isEmpty ? url.absoluteString : displayText
-            editorTextView.selectedRange = selectedRange
-            let attributes = linkTypingAttributes(url: url)
-            replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
+            self.applyFormattingInBothModes { [weak self] in
+                guard let self else { return }
+                let title = displayText.isEmpty ? url.absoluteString : displayText
+                editorTextView.selectedRange = selectedRange
+                let attributes = linkTypingAttributes(url: url)
+                replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
+            }
         })
         present(alert, animated: true)
     }
@@ -946,15 +988,18 @@ private extension RichTextEditorViewController {
     }
 
     @objc func removeLink() {
-        let range = effectiveSelectionOrCurrentWordRange()
-        guard range.length > 0 else { return }
-        let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
-        mutableText.removeAttribute(.link, range: range)
-        mutableText.addAttribute(.foregroundColor, value: UIColor.label, range: range)
-        mutableText.removeAttribute(.underlineStyle, range: range)
-        editorTextView.attributedText = mutableText
-        editorTextView.selectedRange = range
-        updateToolbarSelectionState()
+        applyFormattingInBothModes { [weak self] in
+            guard let self else { return }
+            let range = effectiveSelectionOrCurrentWordRange()
+            guard range.length > 0 else { return }
+            let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
+            mutableText.removeAttribute(.link, range: range)
+            mutableText.addAttribute(.foregroundColor, value: UIColor.label, range: range)
+            mutableText.removeAttribute(.underlineStyle, range: range)
+            editorTextView.attributedText = mutableText
+            editorTextView.selectedRange = range
+            updateToolbarSelectionState()
+        }
     }
 
     @objc func insertImagePlaceholder() {
