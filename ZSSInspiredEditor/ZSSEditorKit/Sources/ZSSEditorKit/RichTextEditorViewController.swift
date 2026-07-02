@@ -455,16 +455,13 @@ private extension RichTextEditorViewController {
             arrangedSubview.removeFromSuperview()
         }
         toolbarButtons.removeAll()
-        modeControl.removeTarget(self, action: #selector(modeChanged), for: .valueChanged)
 
         if let plusButtonBehavior = toolbarConfiguration.plusButtonBehavior {
             addPlusButton(behavior: plusButtonBehavior)
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        modeControl.selectedSegmentIndex = editorMode == .richText ? 0 : 1
-        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-        toolbarStackView.addArrangedSubview(modeControl)
+        addToolbarMenuButton(title: "Mode", imageName: "square.2.stack.3d", menu: modeSelectionMenu())
         toolbarStackView.addArrangedSubview(separator())
 
         let toolbarOptions = editorMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
@@ -716,6 +713,29 @@ private extension RichTextEditorViewController {
             removeAttribute(attribute, range: editorTextView.selectedRange)
         })
         return UIMenu(title: title, image: UIImage(systemName: imageName), children: actions)
+    }
+
+    func modeSelectionMenu() -> UIMenu {
+        var richTextAction = UIAction(title: "Rich Text", image: UIImage(systemName: "text.justify")) { [weak self] _ in
+            self?.syncHTMLToEditor()
+            self?.setMode(.richText)
+            self?.configureToolbar()
+        }
+        var markdownAction = UIAction(title: "Markdown", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
+            self?.htmlTextView.text = self?.htmlString() ?? ""
+            self?.setMode(.html)
+            self?.configureToolbar()
+        }
+
+        if editorMode == .richText {
+            richTextAction.attributes.insert(.disabled)
+            richTextAction.state = .on
+        } else {
+            markdownAction.attributes.insert(.disabled)
+            markdownAction.state = .on
+        }
+
+        return UIMenu(children: [richTextAction, markdownAction])
     }
 
     func separator() -> UIView {
