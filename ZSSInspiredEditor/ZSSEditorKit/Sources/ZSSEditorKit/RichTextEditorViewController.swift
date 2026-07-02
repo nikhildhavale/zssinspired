@@ -271,35 +271,10 @@ public final class RichTextEditorViewController: UIViewController {
         case backgroundColor
     }
 
-    enum ToolbarOption {
-        case textStyle
-        case bold
-        case italic
-        case underline
-        case strikeThrough
-        case baseline
-        case clear
-        case alignment
-        case lists
-        case links
-        case colors
-        case undoRedo
-    }
-
-    private let richTextToolbarOptions: [ToolbarOption] = [
-        .textStyle, .bold, .italic, .underline, .strikeThrough, .baseline, .clear,
-        .alignment, .lists, .links, .colors, .undoRedo
-    ]
-
-    private let markdownToolbarOptions: [ToolbarOption] = [
-        .bold, .italic, .underline, .lists, .links, .undoRedo
-    ]
-
     private let editorTextView = UITextView()
     private let htmlTextView = UITextView()
     private let toolbarScrollView = UIScrollView()
     private let toolbarStackView = UIStackView()
-    private let modeControl = UISegmentedControl(items: ["Edit", "HTML"])
     private let placeholderLabel = UILabel()
     private let mentionTableView = UITableView(frame: .zero, style: .plain)
 
@@ -323,10 +298,6 @@ public final class RichTextEditorViewController: UIViewController {
 
     private let baseFont = UIFont.preferredFont(forTextStyle: .body)
     private let linkColor = UIColor.systemBlue
-
-    private var activeTextView: UITextView {
-        editorMode == .richText ? editorTextView : htmlTextView
-    }
 
     public init(
         mentionConfiguration: MentionConfiguration = MentionConfiguration(),
@@ -464,47 +435,23 @@ private extension RichTextEditorViewController {
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        addToolbarMenuButton(title: "Mode", imageName: "square.2.stack.3d", menu: modeSelectionMenu())
+        addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
+        addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
+        addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
+        addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
+        addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
+        addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
+        addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
         toolbarStackView.addArrangedSubview(separator())
 
-        let toolbarOptions = editorMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
-        var separatorIndex = 0
+        addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
+        listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
+        addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
+        addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
+        toolbarStackView.addArrangedSubview(separator())
 
-        for option in toolbarOptions {
-            switch option {
-            case .textStyle:
-                addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
-            case .bold:
-                addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
-            case .italic:
-                addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
-            case .underline:
-                addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
-            case .strikeThrough:
-                addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
-            case .baseline:
-                addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
-            case .clear:
-                addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
-            case .alignment:
-                addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
-            case .lists:
-                listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
-            case .links:
-                addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
-            case .colors:
-                addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
-            case .undoRedo:
-                addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
-                addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
-            }
-
-            separatorIndex += 1
-            if separatorIndex == 6 {
-                toolbarStackView.addArrangedSubview(separator())
-                separatorIndex = 0
-            }
-        }
+        addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
+        addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
     }
 
     func configureTextViews() {
@@ -529,8 +476,7 @@ private extension RichTextEditorViewController {
         ])
 
         htmlTextView.delegate = self
-        htmlTextView.font = baseFont
-        htmlTextView.textColor = .label
+        htmlTextView.font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
         htmlTextView.backgroundColor = .systemGroupedBackground
         htmlTextView.textContainerInset = editorTextView.textContainerInset
         htmlTextView.autocorrectionType = .no
@@ -719,25 +665,6 @@ private extension RichTextEditorViewController {
         return UIMenu(title: title, image: UIImage(systemName: imageName), children: actions)
     }
 
-    func modeSelectionMenu() -> UIMenu {
-        let richTextAction = UIAction(title: "Rich Text", image: UIImage(systemName: "text.justify")) { [weak self] _ in
-            self?.setMode(.richText)
-        }
-        let markdownAction = UIAction(title: "Markdown", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
-            self?.setMode(.html)
-        }
-
-        if editorMode == .richText {
-            richTextAction.attributes.insert(.disabled)
-            richTextAction.state = .on
-        } else {
-            markdownAction.attributes.insert(.disabled)
-            markdownAction.state = .on
-        }
-
-        return UIMenu(children: [richTextAction, markdownAction])
-    }
-
     func separator() -> UIView {
         let view = UIView()
         view.backgroundColor = .separator
@@ -749,84 +676,53 @@ private extension RichTextEditorViewController {
 
 private extension RichTextEditorViewController {
 
-    @objc func modeChanged() {
-        if modeControl.selectedSegmentIndex == 0 {
-            syncHTMLToEditor()
-            setMode(.richText)
-        } else {
-            htmlTextView.text = htmlString()
-            setMode(.html)
-        }
-    }
-
     private func setMode(_ mode: EditorMode) {
         editorMode = mode
         hideMentionSuggestions()
-        editorTextView.becomeFirstResponder()
-    }
-
-    private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
-        if editorMode == .html {
-            syncHTMLToEditor()
-            editorTextView.selectedRange = NSRange(location: 0, length: editorTextView.text.count)
-        }
-        formattingBlock()
-        if editorMode == .html {
-            htmlTextView.text = htmlString()
-            htmlTextView.textColor = .label
+        editorTextView.isHidden = mode != .richText
+        htmlTextView.isHidden = mode != .html
+        if mode == .richText {
+            editorTextView.becomeFirstResponder()
+        } else {
+            htmlTextView.becomeFirstResponder()
         }
     }
 
     @objc func toggleBold() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleFontTrait(.traitBold)
-        }
+        toggleFontTrait(.traitBold)
     }
 
     @objc func toggleItalic() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleFontTrait(.traitItalic)
-        }
+        toggleFontTrait(.traitItalic)
     }
 
     @objc func toggleUnderlineStyle() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleAttribute(.underlineStyle, enabledValue: NSUnderlineStyle.single.rawValue)
-        }
+        toggleAttribute(.underlineStyle, enabledValue: NSUnderlineStyle.single.rawValue)
     }
 
     @objc func toggleStrikeThroughStyle() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleAttribute(.strikethroughStyle, enabledValue: NSUnderlineStyle.single.rawValue)
-        }
+        toggleAttribute(.strikethroughStyle, enabledValue: NSUnderlineStyle.single.rawValue)
     }
 
     @objc func toggleSubscript() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleExclusiveBaseline(offset: -5)
-        }
+        toggleExclusiveBaseline(offset: -5)
     }
 
     @objc func toggleSuperscript() {
-        applyFormattingInBothModes { [weak self] in
-            self?.toggleExclusiveBaseline(offset: 5)
-        }
+        toggleExclusiveBaseline(offset: 5)
     }
 
     @objc func removeFormatting() {
-        applyFormattingInBothModes { [weak self] in
-            guard let self else { return }
-            let range = editorTextView.selectedRange
-            guard range.length > 0 else {
-                editorTextView.typingAttributes = defaultTypingAttributes()
-                updateToolbarSelectionState()
-                return
-            }
-
-            let plainText = (editorTextView.text as NSString).substring(with: range)
-            let replacement = NSAttributedString(string: plainText, attributes: defaultTypingAttributes())
-            replaceSelection(with: replacement, selectedOffset: replacement.length)
+        let range = editorTextView.selectedRange
+        guard range.length > 0 else {
+            editorTextView.typingAttributes = defaultTypingAttributes()
+            updateToolbarSelectionState()
+            return
         }
+
+        let plainText = (editorTextView.text as NSString).substring(with: range)
+        let replacement = NSAttributedString(string: plainText, attributes: defaultTypingAttributes())
+        replaceSelection(with: replacement, selectedOffset: replacement.length)
     }
 
     @objc func applyHeadingStyle(_ sender: UIButton) {
@@ -869,57 +765,47 @@ private extension RichTextEditorViewController {
     }
 
     @objc func toggleUnorderedList() {
-        applyFormattingInBothModes { [weak self] in
-            guard let self else { return }
-            if listMode == .unordered {
-                listMode = .none
-                removeListMarkersFromCurrentParagraphs()
-            } else if listMode == .ordered {
-                listMode = .unordered
-                removeListMarkersFromCurrentParagraphs()
-                applyListMarkersToCurrentParagraphs()
-            } else {
-                listMode = .unordered
-                orderedListCounter = 1
-                applyListMarkersToCurrentParagraphs()
-            }
+        if listMode == .unordered {
+            listMode = .none
+            removeListMarkersFromCurrentParagraphs()
+        } else if listMode == .ordered {
+            listMode = .unordered
+            removeListMarkersFromCurrentParagraphs()
+            applyListMarkersToCurrentParagraphs()
+        } else {
+            listMode = .unordered
+            orderedListCounter = 1
+            applyListMarkersToCurrentParagraphs()
         }
     }
 
     @objc func toggleOrderedList() {
-        applyFormattingInBothModes { [weak self] in
-            guard let self else { return }
-            if listMode == .ordered {
-                listMode = .none
-                removeListMarkersFromCurrentParagraphs()
-            } else if listMode == .unordered {
-                listMode = .ordered
-                orderedListCounter = 1
-                removeListMarkersFromCurrentParagraphs()
-                applyListMarkersToCurrentParagraphs()
-            } else {
-                listMode = .ordered
-                orderedListCounter = 1
-                applyListMarkersToCurrentParagraphs()
-            }
+        if listMode == .ordered {
+            listMode = .none
+            removeListMarkersFromCurrentParagraphs()
+        } else if listMode == .unordered {
+            listMode = .ordered
+            orderedListCounter = 1
+            removeListMarkersFromCurrentParagraphs()
+            applyListMarkersToCurrentParagraphs()
+        } else {
+            listMode = .ordered
+            orderedListCounter = 1
+            applyListMarkersToCurrentParagraphs()
         }
     }
 
     @objc func indentSelection() {
-        applyFormattingInBothModes { [weak self] in
-            self?.updateParagraphStyle { style in
-                style.firstLineHeadIndent += 24
-                style.headIndent += 24
-            }
+        updateParagraphStyle { style in
+            style.firstLineHeadIndent += 24
+            style.headIndent += 24
         }
     }
 
     @objc func outdentSelection() {
-        applyFormattingInBothModes { [weak self] in
-            self?.updateParagraphStyle { style in
-                style.firstLineHeadIndent = max(0, style.firstLineHeadIndent - 24)
-                style.headIndent = max(0, style.headIndent - 24)
-            }
+        updateParagraphStyle { style in
+            style.firstLineHeadIndent = max(0, style.firstLineHeadIndent - 24)
+            style.headIndent = max(0, style.headIndent - 24)
         }
     }
 
@@ -955,13 +841,10 @@ private extension RichTextEditorViewController {
                 return
             }
 
-            self.applyFormattingInBothModes { [weak self] in
-                guard let self else { return }
-                let title = displayText.isEmpty ? url.absoluteString : displayText
-                editorTextView.selectedRange = selectedRange
-                let attributes = linkTypingAttributes(url: url)
-                replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
-            }
+            let title = displayText.isEmpty ? url.absoluteString : displayText
+            editorTextView.selectedRange = selectedRange
+            let attributes = linkTypingAttributes(url: url)
+            replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
         })
         present(alert, animated: true)
     }
@@ -980,18 +863,15 @@ private extension RichTextEditorViewController {
     }
 
     @objc func removeLink() {
-        applyFormattingInBothModes { [weak self] in
-            guard let self else { return }
-            let range = effectiveSelectionOrCurrentWordRange()
-            guard range.length > 0 else { return }
-            let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
-            mutableText.removeAttribute(.link, range: range)
-            mutableText.addAttribute(.foregroundColor, value: UIColor.label, range: range)
-            mutableText.removeAttribute(.underlineStyle, range: range)
-            editorTextView.attributedText = mutableText
-            editorTextView.selectedRange = range
-            updateToolbarSelectionState()
-        }
+        let range = effectiveSelectionOrCurrentWordRange()
+        guard range.length > 0 else { return }
+        let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
+        mutableText.removeAttribute(.link, range: range)
+        mutableText.addAttribute(.foregroundColor, value: UIColor.label, range: range)
+        mutableText.removeAttribute(.underlineStyle, range: range)
+        editorTextView.attributedText = mutableText
+        editorTextView.selectedRange = range
+        updateToolbarSelectionState()
     }
 
     @objc func insertImagePlaceholder() {
