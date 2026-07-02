@@ -462,12 +462,10 @@ private extension RichTextEditorViewController {
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        if toolbarConfiguration.showsModeControl {
-            modeControl.selectedSegmentIndex = editorMode == .richText ? 0 : 1
-            modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-            toolbarStackView.addArrangedSubview(modeControl)
-            toolbarStackView.addArrangedSubview(separator())
-        }
+        modeControl.selectedSegmentIndex = editorMode == .richText ? 0 : 1
+        modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
+        toolbarStackView.addArrangedSubview(modeControl)
+        toolbarStackView.addArrangedSubview(separator())
 
         let toolbarOptions = editorMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
         var separatorIndex = 0
