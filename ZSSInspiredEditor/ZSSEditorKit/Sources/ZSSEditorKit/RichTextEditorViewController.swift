@@ -1149,7 +1149,7 @@ private extension RichTextEditorViewController {
             return NSRange(location: selection.location, length: min(selection.length, textLength - selection.location))
         }
 
-        let location = selection.location == textLength ? max(0, textLength - 1) : min(selection.location, textLength - 1)
+        let location = selection.location == 0 ? 0 : min(selection.location - 1, textLength - 1)
         return NSRange(location: location, length: 1)
     }
 
@@ -1294,14 +1294,19 @@ private extension RichTextEditorViewController {
         }
 
         let selection = editorTextView.selectedRange
-        let paragraphRanges = paragraphRanges(in: range, textLength: nsText.length)
+        let nsText_mutable = editorTextView.text as NSString
+
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         var locationDelta = 0
         var currentNumber = orderedListCounter
 
+        let paragraphRanges = paragraphRanges(in: range, textLength: nsText.length)
+
         for paragraphRange in paragraphRanges {
             let adjustedLocation = paragraphRange.location + locationDelta
             let adjustedRange = NSRange(location: adjustedLocation, length: paragraphRange.length)
+            guard adjustedRange.length > 0 && adjustedRange.location + adjustedRange.length <= mutableText.length else { continue }
+
             let paragraph = (mutableText.string as NSString).substring(with: adjustedRange)
 
             if paragraph.hasListMarker {
