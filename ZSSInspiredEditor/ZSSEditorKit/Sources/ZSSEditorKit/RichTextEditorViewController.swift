@@ -723,13 +723,11 @@ private extension RichTextEditorViewController {
         var richTextAction = UIAction(title: "Rich Text", image: UIImage(systemName: "text.justify")) { [weak self] _ in
             self?.syncHTMLToEditor()
             self?.setMode(.richText)
-            self?.configureToolbar()
         }
         var markdownAction = UIAction(title: "Markdown", image: UIImage(systemName: "chevron.left.forwardslash.chevron.right")) { [weak self] _ in
             self?.htmlTextView.text = self?.htmlString() ?? ""
             self?.htmlTextView.textColor = .label
             self?.setMode(.html)
-            self?.configureToolbar()
         }
 
         if editorMode == .richText {
