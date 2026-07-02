@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.summary          = 'ZSS-inspired UIKit rich text editor component.'
   s.description      = <<-DESC
     A UIKit-based rich text editor view controller with a configurable toolbar,
-    formatting actions, list handling, and HTML interoperability.
+    formatting actions, list handling, HTML interoperability, and markdown export.
   DESC
   s.homepage         = 'https://github.com/nikhildhavale/zssinspired'
   s.license          = { :type => 'MIT' }

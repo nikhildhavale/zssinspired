@@ -211,6 +211,10 @@ public final class RichTextEditorViewController: UIViewController {
         editorTextView.attributedText
     }
 
+    public var markdown: String {
+        attributedStringToMarkdown(editorTextView.attributedText)
+    }
+
     fileprivate enum EditorMode {
         case richText
         case html
@@ -1517,6 +1521,52 @@ private extension RichTextEditorViewController {
         attributes[.foregroundColor] = linkColor
         attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
         return attributes
+    }
+
+    func attributedStringToMarkdown(_ attributedString: NSAttributedString) -> String {
+        var markdown = ""
+        var index = 0
+        let attributedText = attributedString
+
+        while index < attributedText.length {
+            var effectiveRange = NSRange(location: 0, length: 0)
+
+            if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
+                markdown += "@\(mention.name)"
+            } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
+                markdown += "[image]"
+            } else {
+                let text = attributedText.attributedSubstring(from: effectiveRange).string
+                var formattedText = text
+
+                if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
+                    let traits = font.fontDescriptor.symbolicTraits
+                    if traits.contains(.traitBold) {
+                        formattedText = "**\(formattedText)**"
+                    }
+                    if traits.contains(.traitItalic) {
+                        formattedText = "*\(formattedText)*"
+                    }
+                }
+
+                if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
+                    formattedText = "__\(formattedText)__"
+                }
+
+                if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
+                    formattedText = "~~\(formattedText)~~"
+                }
+
+                if let link = attributedText.attribute(.link, at: index, effectiveRange: nil) as? URL {
+                    formattedText = "[\(formattedText)](\(link.absoluteString))"
+                }
+
+                markdown += formattedText
+            }
+            index = effectiveRange.upperBound
+        }
+
+        return markdown
     }
 
     func updatePlaceholder() {

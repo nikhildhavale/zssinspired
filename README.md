@@ -115,6 +115,18 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 - Undo and redo
 - Rich-text and HTML editing modes
 - Image placeholders and horizontal rules
+- Markdown export support
+
+## Markdown Export
+
+Export the attributed string content as Markdown:
+
+```swift
+let editor = RichTextEditorViewController()
+let markdown = editor.markdown  // Get markdown representation
+```
+
+The editor automatically converts formatting (bold, italic, underline, strikethrough, links) to their Markdown equivalents.
 
 ## License
 
