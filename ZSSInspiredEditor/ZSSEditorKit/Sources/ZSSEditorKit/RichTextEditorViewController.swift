@@ -1385,7 +1385,7 @@ private extension RichTextEditorViewController {
         }
 
         editorTextView.attributedText = mutableText
-        editorTextView.selectedRange = NSRange(location: max(0, range.location - locationDelta), length: 0)
+        editorTextView.selectedRange = NSRange(location: range.location, length: 0)
         updatePlaceholder()
         updateToolbarSelectionState()
     }
