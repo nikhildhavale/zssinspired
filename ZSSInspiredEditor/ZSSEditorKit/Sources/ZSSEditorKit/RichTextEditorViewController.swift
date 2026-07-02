@@ -530,7 +530,7 @@ private extension RichTextEditorViewController {
         ])
 
         htmlTextView.delegate = self
-        htmlTextView.font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
+        htmlTextView.font = baseFont
         htmlTextView.textColor = .label
         htmlTextView.backgroundColor = .systemGroupedBackground
         htmlTextView.textContainerInset = editorTextView.textContainerInset
@@ -778,13 +778,10 @@ private extension RichTextEditorViewController {
     }
 
     private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
-        if editorMode == .html {
-            syncHTMLToEditor()
+        guard editorMode == .richText else {
+            return
         }
         formattingBlock()
-        if editorMode == .html {
-            htmlTextView.text = htmlString()
-        }
     }
 
     @objc func toggleBold() {
