@@ -787,6 +787,10 @@ private extension RichTextEditorViewController {
         if listMode == .unordered {
             listMode = .none
             removeListMarkersFromCurrentParagraphs()
+        } else if listMode == .ordered {
+            listMode = .unordered
+            removeListMarkersFromCurrentParagraphs()
+            applyListMarkersToCurrentParagraphs()
         } else {
             listMode = .unordered
             orderedListCounter = 1
@@ -798,6 +802,11 @@ private extension RichTextEditorViewController {
         if listMode == .ordered {
             listMode = .none
             removeListMarkersFromCurrentParagraphs()
+        } else if listMode == .unordered {
+            listMode = .ordered
+            orderedListCounter = 1
+            removeListMarkersFromCurrentParagraphs()
+            applyListMarkersToCurrentParagraphs()
         } else {
             listMode = .ordered
             orderedListCounter = 1
