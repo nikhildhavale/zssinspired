@@ -292,8 +292,7 @@ public final class RichTextEditorViewController: UIViewController {
     ]
 
     private let markdownToolbarOptions: [ToolbarOption] = [
-        .bold, .italic, .underline, .strikeThrough, .clear,
-        .lists, .links, .undoRedo
+        .bold, .italic, .underline, .lists, .links, .undoRedo
     ]
 
     private let editorTextView = UITextView()
@@ -780,6 +779,7 @@ private extension RichTextEditorViewController {
     private func applyFormattingInBothModes(_ formattingBlock: @escaping () -> Void) {
         if editorMode == .html {
             syncHTMLToEditor()
+            editorTextView.selectedRange = NSRange(location: 0, length: editorTextView.text.count)
         }
         formattingBlock()
         if editorMode == .html {
