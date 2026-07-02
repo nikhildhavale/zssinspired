@@ -271,6 +271,31 @@ public final class RichTextEditorViewController: UIViewController {
         case backgroundColor
     }
 
+    enum ToolbarOption {
+        case textStyle
+        case bold
+        case italic
+        case underline
+        case strikeThrough
+        case baseline
+        case clear
+        case alignment
+        case lists
+        case links
+        case colors
+        case undoRedo
+    }
+
+    private let richTextToolbarOptions: [ToolbarOption] = [
+        .textStyle, .bold, .italic, .underline, .strikeThrough, .baseline, .clear,
+        .alignment, .lists, .links, .colors, .undoRedo
+    ]
+
+    private let markdownToolbarOptions: [ToolbarOption] = [
+        .bold, .italic, .underline, .strikeThrough, .clear,
+        .lists, .links, .undoRedo
+    ]
+
     private let editorTextView = UITextView()
     private let htmlTextView = UITextView()
     private let toolbarScrollView = UIScrollView()
@@ -444,23 +469,44 @@ private extension RichTextEditorViewController {
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
-        addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
-        addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
-        addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
-        addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
-        addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
-        addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
-        toolbarStackView.addArrangedSubview(separator())
+        let toolbarOptions = editorMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
+        var separatorIndex = 0
 
-        addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
-        listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
-        addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
-        addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
-        toolbarStackView.addArrangedSubview(separator())
+        for option in toolbarOptions {
+            switch option {
+            case .textStyle:
+                addToolbarMenuButton(title: "Text Style", imageName: "textformat.size", menu: headingMenu())
+            case .bold:
+                addToolbarButton(.bold, title: "B", imageName: "bold", action: #selector(toggleBold))
+            case .italic:
+                addToolbarButton(.italic, title: "I", imageName: "italic", action: #selector(toggleItalic))
+            case .underline:
+                addToolbarButton(.underline, title: "U", imageName: "underline", action: #selector(toggleUnderlineStyle))
+            case .strikeThrough:
+                addToolbarButton(.strikeThrough, title: "S", imageName: "strikethrough", action: #selector(toggleStrikeThroughStyle))
+            case .baseline:
+                addToolbarMenuButton(title: "Baseline", imageName: "textformat", menu: baselineMenu())
+            case .clear:
+                addToolbarButton(title: "Clear", imageName: "clear", action: #selector(removeFormatting))
+            case .alignment:
+                addToolbarMenuButton(title: "Alignment", imageName: "text.alignleft", menu: alignmentMenu())
+            case .lists:
+                listsMenuButton = addToolbarMenuButton(title: "Lists", imageName: "list.bullet", menu: listMenu())
+            case .links:
+                addToolbarMenuButton(title: "Links", imageName: "link", menu: linkMenu())
+            case .colors:
+                addToolbarMenuButton(title: "Colors", imageName: "paintpalette", menu: colorsMenu())
+            case .undoRedo:
+                addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
+                addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
+            }
 
-        addToolbarButton(title: "Undo", imageName: "arrow.uturn.backward", action: #selector(undo))
-        addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
+            separatorIndex += 1
+            if separatorIndex == 6 {
+                toolbarStackView.addArrangedSubview(separator())
+                separatorIndex = 0
+            }
+        }
     }
 
     func configureTextViews() {
