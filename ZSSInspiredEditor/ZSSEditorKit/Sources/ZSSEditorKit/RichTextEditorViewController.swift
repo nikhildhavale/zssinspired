@@ -1396,9 +1396,13 @@ private extension RichTextEditorViewController {
     }
 
     func continuationMarker(afterPreviousLine previousLine: String) -> String? {
+        let trimmedPrevious = previousLine.trimmingCharacters(in: .whitespaces)
+        let hasBullet = trimmedPrevious.hasPrefix("•")
+        let hasNumber = previousLine.orderedListNumber != nil
+
         switch listMode {
         case .none:
-            if previousLine.trimmingCharacters(in: .whitespaces).hasPrefix("•") {
+            if hasBullet {
                 return "• "
             }
             if let number = previousLine.orderedListNumber {
@@ -1406,8 +1410,9 @@ private extension RichTextEditorViewController {
             }
             return nil
         case .unordered:
-            return "• "
+            return hasBullet ? "• " : nil
         case .ordered:
+            guard hasNumber else { return nil }
             let nextNumber = previousLine.orderedListNumber.map { $0 + 1 } ?? orderedListCounter
             orderedListCounter = nextNumber + 1
             return "\(nextNumber). "
@@ -1905,6 +1910,13 @@ extension RichTextEditorViewController: UITextViewDelegate {
     public func textViewDidChange(_ textView: UITextView) {
         guard !isSyncingText else { return }
         if textView == editorTextView {
+            if editorTextView.text.isEmpty && listMode != .none {
+                listMode = .none
+                orderedListCounter = 1
+            } else if listMode != .none && currentListMode() == .none {
+                listMode = .none
+                orderedListCounter = 1
+            }
             updatePlaceholder()
             updateToolbarSelectionState()
             updateMentionSuggestions()
