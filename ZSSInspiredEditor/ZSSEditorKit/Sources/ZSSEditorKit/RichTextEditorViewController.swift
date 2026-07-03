@@ -1691,7 +1691,40 @@ private extension RichTextEditorViewController {
             index = effectiveRange.upperBound
         }
 
+        let indentLevels = paragraphIndentLevels(of: attributedText)
         return markdown
+            .components(separatedBy: "\n")
+            .enumerated()
+            .map { lineIndex, line in
+                var converted = line.replacingOccurrences(of: #"^(\s*)•\s?"#, with: "$1- ", options: .regularExpression)
+                let level = lineIndex < indentLevels.count ? indentLevels[lineIndex] : 0
+                let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
+                if level > 0 && isListLine {
+                    converted = String(repeating: "    ", count: level) + converted
+                }
+                return converted
+            }
+            .joined(separator: "\n")
+    }
+
+    /// Indent level per paragraph (split on "\n"), derived from the 24pt steps applied by indent/outdent.
+    private func paragraphIndentLevels(of attributedString: NSAttributedString) -> [Int] {
+        let nsString = attributedString.string as NSString
+        var levels: [Int] = []
+        var location = 0
+        while true {
+            if location < nsString.length,
+               let style = attributedString.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle {
+                levels.append(max(0, Int((style.headIndent / 24).rounded())))
+            } else {
+                levels.append(0)
+            }
+            let remaining = NSRange(location: location, length: nsString.length - location)
+            let newlineRange = nsString.range(of: "\n", options: [], range: remaining)
+            if newlineRange.location == NSNotFound { break }
+            location = newlineRange.location + 1
+        }
+        return levels
     }
 
     func updatePlaceholder() {
