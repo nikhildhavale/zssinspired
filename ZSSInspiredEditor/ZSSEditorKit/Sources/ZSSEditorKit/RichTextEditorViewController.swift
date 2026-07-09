@@ -317,7 +317,9 @@ public final class RichTextEditorViewController: UIViewController {
         case alignJustified
         case unorderedList
         case orderedList
+        case outdent
         case link
+        case removeLink
         case foregroundColor
         case backgroundColor
     }
@@ -341,6 +343,12 @@ public final class RichTextEditorViewController: UIViewController {
         case colors
         case undoRedo
         case separator
+        case bulletList
+        case numberedList
+        case outdent
+        case indent
+        case addLink
+        case removeLink
     }
 
     private let richTextToolbarOptions: [ToolbarOption] = [
@@ -349,10 +357,13 @@ public final class RichTextEditorViewController: UIViewController {
         .undoRedo
     ]
 
+    /// Matches the markdown toolbar design: flat buttons, no menus —
+    /// + | B I U | bullet, numbered | outdent, indent | link, unlink.
     private let markdownToolbarOptions: [ToolbarOption] = [
-        .textStyle, .bold, .italic, .separator,
-        .lists, .links, .separator,
-        .undoRedo
+        .bold, .italic, .underline,
+        .bulletList, .numberedList,
+        .outdent, .indent,
+        .addLink, .removeLink
     ]
 
     private let editorTextView = UITextView()
@@ -560,12 +571,16 @@ private extension RichTextEditorViewController {
 
         if let plusButtonBehavior = toolbarConfiguration.plusButtonBehavior {
             addPlusButton(behavior: plusButtonBehavior)
-            toolbarStackView.addArrangedSubview(separator())
+            if contentMode == .richText {
+                toolbarStackView.addArrangedSubview(separator())
+            }
         }
 
         if toolbarConfiguration.showsModeControl {
             addToolbarMenuButton(title: "Mode", imageName: "square.2.layers.3d", menu: modeSelectionMenu())
-            toolbarStackView.addArrangedSubview(separator())
+            if contentMode == .richText {
+                toolbarStackView.addArrangedSubview(separator())
+            }
         }
 
         let options = contentMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
@@ -598,6 +613,18 @@ private extension RichTextEditorViewController {
                 addToolbarButton(title: "Redo", imageName: "arrow.uturn.forward", action: #selector(redo))
             case .separator:
                 toolbarStackView.addArrangedSubview(separator())
+            case .bulletList:
+                addToolbarButton(.unorderedList, title: "Bullet List", imageName: "list.bullet", action: #selector(toggleUnorderedList))
+            case .numberedList:
+                addToolbarButton(.orderedList, title: "Numbered List", imageName: "list.number", action: #selector(toggleOrderedList))
+            case .outdent:
+                addToolbarButton(.outdent, title: "Decrease Indent", imageName: "decrease.indent", action: #selector(outdentSelection))
+            case .indent:
+                addToolbarButton(title: "Increase Indent", imageName: "increase.indent", action: #selector(indentSelection))
+            case .addLink:
+                addToolbarButton(.link, title: "Add Link", imageName: "link", action: #selector(insertLink))
+            case .removeLink:
+                addToolbarButton(.removeLink, title: "Remove Link", image: slashedSystemImage("link"), action: #selector(removeLink))
             }
         }
     }
@@ -642,12 +669,16 @@ private extension RichTextEditorViewController {
     }
 
     private func addToolbarButton(_ item: ToolbarItem? = nil, title: String, imageName: String?, action: Selector, accessibilityValue: String? = nil) {
+        addToolbarButton(item, title: title, image: imageName.flatMap(UIImage.init(systemName:)), action: action, accessibilityValue: accessibilityValue)
+    }
+
+    private func addToolbarButton(_ item: ToolbarItem? = nil, title: String, image: UIImage?, action: Selector, accessibilityValue: String? = nil) {
         var configuration = UIButton.Configuration.bordered()
         configuration.cornerStyle = .medium
         configuration.baseForegroundColor = .label
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10)
 
-        if let imageName, let image = UIImage(systemName: imageName) {
+        if let image {
             configuration.image = image
         } else {
             configuration.title = title
@@ -660,8 +691,13 @@ private extension RichTextEditorViewController {
         button.accessibilityValue = accessibilityValue
         button.configurationUpdateHandler = { button in
             var updatedConfiguration = button.configuration ?? .bordered()
-            updatedConfiguration.baseForegroundColor = button.isSelected ? .white : .label
-            updatedConfiguration.baseBackgroundColor = button.isSelected ? .systemBlue : .clear
+            if button.isEnabled {
+                updatedConfiguration.baseForegroundColor = button.isSelected ? .white : .label
+                updatedConfiguration.baseBackgroundColor = button.isSelected ? .systemBlue : .clear
+            } else {
+                updatedConfiguration.baseForegroundColor = .tertiaryLabel
+                updatedConfiguration.baseBackgroundColor = .clear
+            }
             button.configuration = updatedConfiguration
         }
         button.addTarget(self, action: action, for: .touchUpInside)
@@ -690,26 +726,32 @@ private extension RichTextEditorViewController {
     }
 
     func addPlusButton(behavior: PlusButtonBehavior) {
-        switch behavior {
-        case .action(let action):
-            addToolbarActionButton(title: action.title, imageName: "plus", handler: action.handler)
-        case .menu(let actions):
-            addToolbarMenuButton(title: "More Actions", imageName: "plus", menu: externalActionsMenu(actions: actions))
+        var configuration: UIButton.Configuration
+        if contentMode == .markdown {
+            configuration = .filled()
+            configuration.baseBackgroundColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1)
+            configuration.baseForegroundColor = .white
+        } else {
+            configuration = .bordered()
+            configuration.baseForegroundColor = .label
         }
-    }
-
-    func addToolbarActionButton(title: String, imageName: String, handler: @escaping () -> Void) {
-        var configuration = UIButton.Configuration.bordered()
         configuration.cornerStyle = .medium
-        configuration.baseForegroundColor = .label
-        configuration.image = UIImage(systemName: imageName)
+        configuration.image = UIImage(systemName: "plus")
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10)
 
-        let action = UIAction { _ in handler() }
-        let button = UIButton(configuration: configuration, primaryAction: action)
+        let button: UIButton
+        switch behavior {
+        case .action(let action):
+            button = UIButton(configuration: configuration, primaryAction: UIAction { _ in action.handler() })
+            button.accessibilityLabel = action.title
+        case .menu(let actions):
+            button = UIButton(configuration: configuration)
+            button.menu = externalActionsMenu(actions: actions)
+            button.showsMenuAsPrimaryAction = true
+            button.accessibilityLabel = "More Actions"
+        }
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
         button.heightAnchor.constraint(equalToConstant: 38).isActive = true
-        button.accessibilityLabel = title
         toolbarStackView.addArrangedSubview(button)
     }
 
@@ -837,6 +879,25 @@ private extension RichTextEditorViewController {
         view.widthAnchor.constraint(equalToConstant: 1).isActive = true
         view.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return view
+    }
+
+    /// SF Symbols has no slashed link variant, so draw the symbol with a
+    /// diagonal strikethrough (template image, tinted like any other icon).
+    func slashedSystemImage(_ name: String) -> UIImage? {
+        guard let base = UIImage(systemName: name) else { return nil }
+        let size = base.size
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            base.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size))
+            let slash = UIBezierPath()
+            slash.move(to: CGPoint(x: size.width * 0.1, y: size.height * 0.05))
+            slash.addLine(to: CGPoint(x: size.width * 0.9, y: size.height * 0.95))
+            slash.lineWidth = 1.6
+            slash.lineCapStyle = .round
+            UIColor.black.setStroke()
+            slash.stroke()
+        }
+        return image.withRenderingMode(.alwaysTemplate)
     }
 }
 
@@ -1319,6 +1380,18 @@ private extension RichTextEditorViewController {
         }
 
         listsMenuButton?.menu = listMenu()
+
+        toolbarButtons[.removeLink]?.isEnabled = selectionHasAttribute(.link)
+        toolbarButtons[.outdent]?.isEnabled = currentIndentLevel() > 0
+    }
+
+    /// Indent level of the paragraph at the caret, in 24pt indent steps.
+    private func currentIndentLevel() -> Int {
+        guard let range = selectionInspectionRange(),
+              let style = editorTextView.attributedText.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle else {
+            return 0
+        }
+        return max(0, Int((style.headIndent / 24).rounded()))
     }
 
     private func setToolbarButton(_ item: ToolbarItem, selected: Bool) {
