@@ -143,9 +143,25 @@ editor.setHTML("<b>Bold</b> and <i>italic</i>")  // alternatively, from HTML
 
 editor.placeholder = "Write a comment..."
 editor.focus()  // give the editor keyboard focus
+editor.blur()   // resign keyboard focus
 ```
 
 `setMarkdown(_:)` understands the same dialect the `markdown` getter emits: `**bold**`, `*italic*`, `__underline__`, `~~strikethrough~~`, `[text](url)`, `#`–`######` headings, `- ` bullets, `1. ` numbered lists, and 4-space list indents.
+
+## Mentions: `MentionItem`
+
+Types you hand to `MentionConfiguration.suggestions` or return from `MentionSuggestionsProviding` must conform to `MentionItem`:
+
+```swift
+public protocol MentionItem {
+    var mentionIdentifier: String { get }
+    var mentionDisplayName: String { get }
+    var mentionImage: RichTextEditorViewController.MentionImage? { get }
+    var isSelfMention: Bool { get }
+}
+```
+
+`mentionDisplayName`/`mentionImage` are deliberately not named `name`/`image` — an Objective-C class conforming to `MentionItem` may already declare its own `name`/`image` property (e.g. an implicitly-unwrapped `NSString!`), which can't witness a non-optional `String` protocol requirement of the same name. Conform via an `extension` on your existing model type rather than adding stored properties where possible.
 
 ## License
 

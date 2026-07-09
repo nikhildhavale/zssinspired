@@ -33,23 +33,27 @@ extension RichTextEditorViewController {
         }
     }
 
+    /// `mentionDisplayName`/`mentionImage` are named to avoid colliding with
+    /// `name`/`image` properties conforming Objective-C classes may already
+    /// declare (e.g. an existing `name: NSString!` can't witness a
+    /// non-optional `name: String` requirement).
     public protocol MentionItem {
         var mentionIdentifier: String { get }
-        var name: String { get }
-        var image: MentionImage? { get }
+        var mentionDisplayName: String { get }
+        var mentionImage: MentionImage? { get }
         var isSelfMention: Bool { get }
     }
 
     public struct MentionSuggestion: MentionItem {
         public var mentionIdentifier: String
-        public var name: String
-        public var image: MentionImage?
+        public var mentionDisplayName: String
+        public var mentionImage: MentionImage?
         public var isSelfMention: Bool
 
         public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false) {
             self.mentionIdentifier = mentionIdentifier ?? name
-            self.name = name
-            self.image = image
+            self.mentionDisplayName = name
+            self.mentionImage = image
             self.isSelfMention = isSelfMention
         }
     }

@@ -98,8 +98,8 @@ extension ViewController: MentionSuggestionsProviding {
         // and invoke `completion` from the response callback (any thread is fine).
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.65) { [remotePeople] in
             let matches = remotePeople
-                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .filter { query.isEmpty || $0.mentionDisplayName.localizedCaseInsensitiveContains(query) }
+                .sorted { $0.mentionDisplayName.localizedCaseInsensitiveCompare($1.mentionDisplayName) == .orderedAscending }
             print("mention query '\(query)' returned \(matches.count) result(s)")
             completion(matches)
         }
@@ -108,8 +108,8 @@ extension ViewController: MentionSuggestionsProviding {
     func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { [channels] in
             let matches = channels
-                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                .filter { query.isEmpty || $0.mentionDisplayName.localizedCaseInsensitiveContains(query) }
+                .sorted { $0.mentionDisplayName.localizedCaseInsensitiveCompare($1.mentionDisplayName) == .orderedAscending }
             print("hashtag query '\(query)' returned \(matches.count) result(s)")
             completion(matches)
         }
@@ -120,10 +120,10 @@ extension ViewController: MentionSuggestionsProviding {
     }
 
     func mentionInserted(_ mention: any RichTextEditorViewController.MentionItem) {
-        logMentionState(event: "inserted \(mention.name) [\(mention.mentionIdentifier)]")
+        logMentionState(event: "inserted \(mention.mentionDisplayName) [\(mention.mentionIdentifier)]")
     }
 
     func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem) {
-        logMentionState(event: "removed \(mention.name) [\(mention.mentionIdentifier)]")
+        logMentionState(event: "removed \(mention.mentionDisplayName) [\(mention.mentionIdentifier)]")
     }
 }

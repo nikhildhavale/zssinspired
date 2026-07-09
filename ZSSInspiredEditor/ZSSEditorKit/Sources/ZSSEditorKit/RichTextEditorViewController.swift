@@ -100,6 +100,13 @@ public final class RichTextEditorViewController: UIViewController {
         }
     }
 
+    /// Resigns keyboard focus from the editor.
+    public func blur() {
+        guard isViewLoaded else { return }
+        editorTextView.resignFirstResponder()
+        htmlTextView.resignFirstResponder()
+    }
+
     private let richTextToolbarOptions: [ToolbarOption] = [
         .textStyle, .bold, .italic, .underline, .strikeThrough, .baseline, .clear, .separator,
         .alignment, .lists, .links, .colors, .separator,
@@ -1534,7 +1541,7 @@ private extension RichTextEditorViewController {
     }
 
     func exportedMentionHTML(for mention: any MentionItem, trigger: MentionTrigger) -> String {
-        let escapedName = escapedHTMLText(mention.name)
+        let escapedName = escapedHTMLText(mention.mentionDisplayName)
         let escapedIdentifier = escapedHTMLAttribute(mention.mentionIdentifier)
         switch mentionConfiguration.exportFormat {
         case .anchor:
@@ -1631,8 +1638,8 @@ private extension RichTextEditorViewController {
 
         let lowercaseQuery = query.lowercased()
         filteredMentions = allMentionSuggestions()
-            .filter { lowercaseQuery.isEmpty || $0.name.lowercased().hasPrefix(lowercaseQuery) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .filter { lowercaseQuery.isEmpty || $0.mentionDisplayName.lowercased().hasPrefix(lowercaseQuery) }
+            .sorted { $0.mentionDisplayName.localizedCaseInsensitiveCompare($1.mentionDisplayName) == .orderedAscending }
         mentionSections = makeMentionSections(from: filteredMentions)
         showMentionSuggestionsIfNeeded()
     }
@@ -1658,7 +1665,7 @@ private extension RichTextEditorViewController {
         }
 
         let grouped = Dictionary(grouping: suggestions) { suggestion in
-            guard let firstCharacter = suggestion.name.first, firstCharacter.isLetter else { return "#" }
+            guard let firstCharacter = suggestion.mentionDisplayName.first, firstCharacter.isLetter else { return "#" }
             return String(firstCharacter).uppercased()
         }
         return grouped.keys.sorted().map { title in
@@ -1778,20 +1785,20 @@ private extension RichTextEditorViewController {
     }
 
     func mentionImage(for suggestion: any MentionItem) -> UIImage {
-        switch suggestion.image {
+        switch suggestion.mentionImage {
         case .uiImage(let image):
             return image
         case .initials(let initials):
-            return initialsImage(initials, colorSeed: suggestion.name)
+            return initialsImage(initials, colorSeed: suggestion.mentionDisplayName)
         case .url(let url):
-            return mentionImageCache.object(forKey: url as NSURL) ?? initialsImage(initials(for: suggestion.name), colorSeed: suggestion.name)
+            return mentionImageCache.object(forKey: url as NSURL) ?? initialsImage(initials(for: suggestion.mentionDisplayName), colorSeed: suggestion.mentionDisplayName)
         case nil:
-            return initialsImage(initials(for: suggestion.name), colorSeed: suggestion.name)
+            return initialsImage(initials(for: suggestion.mentionDisplayName), colorSeed: suggestion.mentionDisplayName)
         }
     }
 
     func loadMentionImage(for suggestion: any MentionItem, at indexPath: IndexPath) {
-        guard case .url(let url) = suggestion.image, mentionImageCache.object(forKey: url as NSURL) == nil else { return }
+        guard case .url(let url) = suggestion.mentionImage, mentionImageCache.object(forKey: url as NSURL) == nil else { return }
 
         Task { [weak self] in
             guard let self else { return }
@@ -1866,7 +1873,7 @@ private extension RichTextEditorViewController {
         let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
         let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
         let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
-        let text = (trigger.pillPrefix + suggestion.name) as NSString
+        let text = (trigger.pillPrefix + suggestion.mentionDisplayName) as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foregroundColor]
         let textSize = text.size(withAttributes: attributes)
         let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
@@ -2041,7 +2048,7 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
         guard let suggestion = mentionSuggestion(at: indexPath) else { return cell }
         var configuration = cell.defaultContentConfiguration()
-        configuration.text = suggestion.name
+        configuration.text = suggestion.mentionDisplayName
         configuration.textProperties.color = mentionConfiguration.suggestionForegroundColor
         if isSelfMention(suggestion) {
             configuration.secondaryText = mentionConfiguration.selfMentionLabel

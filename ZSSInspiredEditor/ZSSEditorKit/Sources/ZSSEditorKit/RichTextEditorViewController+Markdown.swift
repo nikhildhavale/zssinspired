@@ -22,7 +22,7 @@ extension RichTextEditorViewController {
             var effectiveRange = NSRange(location: 0, length: 0)
 
             if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
-                markdown += "\(mentionTrigger(in: attributedText, at: index).symbol)\(mention.name)"
+                markdown += "\(mentionTrigger(in: attributedText, at: index).symbol)\(mention.mentionDisplayName)"
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 markdown += "[image]"
             } else {
