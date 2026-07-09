@@ -1122,8 +1122,17 @@ private extension RichTextEditorViewController {
 
             let title = displayText.isEmpty ? url.absoluteString : displayText
             editorTextView.selectedRange = selectedRange
+
+            // The link is restricted to the display text: typing after it
+            // (space, newline, any character) must not extend the link.
+            var trailingAttributes = editorTextView.typingAttributes
+            trailingAttributes.removeValue(forKey: .link)
+            trailingAttributes.removeValue(forKey: .underlineStyle)
+            trailingAttributes[.foregroundColor] = UIColor.label
+
             let attributes = linkTypingAttributes(url: url)
             replaceSelection(with: NSAttributedString(string: title, attributes: attributes), selectedOffset: title.utf16.count)
+            editorTextView.typingAttributes = trailingAttributes
         })
         present(alert, animated: true)
     }
