@@ -26,8 +26,13 @@ public protocol MentionSuggestionsProviding: AnyObject {
     /// safe to call it late. Call it at most once per invocation.
     func fetchMentionSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void)
 
+    /// Same contract as `fetchMentionSuggestions(for:completion:)`, but for the
+    /// text following "#". Implement this to supply hashtag/channel suggestions;
+    /// the default implementation returns no results. Optional.
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void)
+
     /// Called when the mention session ends without a selection
-    /// (escape key, caret moved away, "@" deleted). Optional.
+    /// (escape key, caret moved away, "@" or "#" deleted). Optional.
     func mentionSessionDidEnd()
 
     /// Called when the user picks a suggestion and it is inserted into the text. Optional.
@@ -38,6 +43,9 @@ public protocol MentionSuggestionsProviding: AnyObject {
 }
 
 public extension MentionSuggestionsProviding {
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
+        completion([])
+    }
     func mentionSessionDidEnd() {}
     func mentionInserted(_ mention: any RichTextEditorViewController.MentionItem) {}
     func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem) {}

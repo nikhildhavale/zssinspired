@@ -18,6 +18,19 @@ public final class RichTextEditorViewController: UIViewController {
         case custom((_ mention: any MentionItem, _ escapedName: String, _ escapedIdentifier: String) -> String)
     }
 
+    /// The character that starts a mention session. "@" mentions render as a
+    /// bare name pill; "#" mentions keep the "#" visible in the editor.
+    public enum MentionTrigger: Character, CaseIterable {
+        case at = "@"
+        case hash = "#"
+
+        public var symbol: String { String(rawValue) }
+
+        var pillPrefix: String {
+            self == .hash ? symbol : ""
+        }
+    }
+
     public protocol MentionItem {
         var mentionIdentifier: String { get }
         var name: String { get }
@@ -40,6 +53,8 @@ public final class RichTextEditorViewController: UIViewController {
     }
 
     public struct MentionConfiguration {
+        /// Characters that open a mention session while typing.
+        public var triggers: [MentionTrigger]
         public var suggestions: [any MentionItem]
         public var selfMentionLabel: String
         public var mentionForegroundColor: UIColor
@@ -66,6 +81,7 @@ public final class RichTextEditorViewController: UIViewController {
         public var loadingText: String
 
         public init(
+            triggers: [MentionTrigger] = [.at, .hash],
             suggestions: [any MentionItem] = [
                 MentionSuggestion(name: "Alice"),
                 MentionSuggestion(name: "Bob"),
@@ -98,6 +114,7 @@ public final class RichTextEditorViewController: UIViewController {
             exportFormat: MentionExportFormat = .anchor,
             loadingText: String = "Loading..."
         ) {
+            self.triggers = triggers
             self.suggestions = suggestions
             self.selfMentionLabel = selfMentionLabel
             self.mentionForegroundColor = mentionForegroundColor
@@ -153,13 +170,20 @@ public final class RichTextEditorViewController: UIViewController {
     }
 
     public struct ToolbarConfiguration {
+        /// The editing mode the toolbar is configured for. Determines which
+        /// toolbar options are shown; change it (or call `setContentMode`)
+        /// to switch between rich text and markdown.
+        public var contentMode: ContentMode
+        /// Whether the toolbar shows the Rich Text / Markdown mode switch.
+        /// Set to false to lock the editor to `contentMode`.
         public var showsModeControl: Bool
         public var plusButtonBehavior: PlusButtonBehavior?
         public var foregroundColors: [ToolbarColor]
         public var backgroundColors: [ToolbarColor]
 
         public init(
-            showsModeControl: Bool = false,
+            contentMode: ContentMode = .richText,
+            showsModeControl: Bool = true,
             plusButtonBehavior: PlusButtonBehavior? = nil,
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
@@ -176,6 +200,7 @@ public final class RichTextEditorViewController: UIViewController {
                 ToolbarColor(name: "Pink", color: .systemPink.withAlphaComponent(0.3))
             ]
         ) {
+            self.contentMode = contentMode
             self.showsModeControl = showsModeControl
             self.plusButtonBehavior = plusButtonBehavior
             self.foregroundColors = foregroundColors
@@ -195,13 +220,30 @@ public final class RichTextEditorViewController: UIViewController {
         didSet {
             guard isViewLoaded else { return }
             configureToolbar()
+            if oldValue.contentMode != toolbarConfiguration.contentMode {
+                updateToolbarSelectionState()
+            }
         }
+    }
+
+    public var contentMode: ContentMode {
+        toolbarConfiguration.contentMode
+    }
+
+    public func setContentMode(_ mode: ContentMode) {
+        // The toolbarConfiguration didSet rebuilds the toolbar for the new mode.
+        toolbarConfiguration.contentMode = mode
     }
 
     public var onMentionQueryChanged: ((String?) -> Void)?
     public var onMentionInserted: ((any MentionItem) -> Void)?
     public var onMentionRemoved: ((any MentionItem) -> Void)?
     public private(set) var insertedMentions: [any MentionItem] = []
+
+    /// The trigger character ("@" or "#") of the mention session currently in
+    /// progress, or nil when no session is active. Closure-based hosts can read
+    /// this inside `onMentionQueryChanged` to tell the two apart.
+    public private(set) var activeMentionTrigger: MentionTrigger?
 
     /// Protocol-based alternative to the `onMention*` closures. Setting this
     /// installs a bridge over `onMentionQueryChanged`, `onMentionInserted` and
@@ -328,10 +370,10 @@ public final class RichTextEditorViewController: UIViewController {
     private var remoteMentionSuggestions: [any MentionItem] = []
     private var isMentionSuggestionsLoading = false
     private var lastMentionQuery: String?
+    private var lastMentionTrigger: MentionTrigger?
     private var mentionQueryTask: Task<Void, Never>?
     private let mentionImageCache = NSCache<NSURL, UIImage>()
     private var editorMode: EditorMode = .richText
-    private var contentMode: ContentMode = .richText
     private var listMode: ListMode = .none
     private var orderedListCounter = 1
     private var selectedHeadingStyle: HeadingStyle = .paragraph
@@ -415,11 +457,17 @@ public final class RichTextEditorViewController: UIViewController {
             }
 
             self.setMentionSuggestionsLoading(true)
-            self.mentionProvider?.fetchMentionSuggestions(for: query) { [weak self] items in
+            let deliver: ([any MentionItem]) -> Void = { [weak self] items in
                 DispatchQueue.main.async {
                     guard let self, generation == self.mentionProviderQueryGeneration else { return }
                     self.updateMentionSuggestions(items)
                 }
+            }
+            switch self.activeMentionTrigger ?? .at {
+            case .at:
+                self.mentionProvider?.fetchMentionSuggestions(for: query, completion: deliver)
+            case .hash:
+                self.mentionProvider?.fetchHashtagSuggestions(for: query, completion: deliver)
             }
         }
         onMentionInserted = { [weak self] mention in
@@ -515,8 +563,10 @@ private extension RichTextEditorViewController {
             toolbarStackView.addArrangedSubview(separator())
         }
 
-        addToolbarMenuButton(title: "Mode", imageName: "square.2.layers.3d", menu: modeSelectionMenu())
-        toolbarStackView.addArrangedSubview(separator())
+        if toolbarConfiguration.showsModeControl {
+            addToolbarMenuButton(title: "Mode", imageName: "square.2.layers.3d", menu: modeSelectionMenu())
+            toolbarStackView.addArrangedSubview(separator())
+        }
 
         let options = contentMode == .richText ? richTextToolbarOptions : markdownToolbarOptions
         for option in options {
@@ -779,13 +829,6 @@ private extension RichTextEditorViewController {
             self?.setContentMode(.markdown)
         }
         return UIMenu(children: [richTextAction, markdownAction])
-    }
-
-    func setContentMode(_ mode: ContentMode) {
-        guard contentMode != mode else { return }
-        contentMode = mode
-        configureToolbar()
-        updateToolbarSelectionState()
     }
 
     func separator() -> UIView {
@@ -1608,7 +1651,7 @@ private extension RichTextEditorViewController {
         while index < attributedText.length {
             var effectiveRange = NSRange(location: 0, length: 0)
             if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
-                html += exportedMentionHTML(for: mention)
+                html += exportedMentionHTML(for: mention, trigger: mentionTrigger(in: attributedText, at: index))
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 html += ""
             } else {
@@ -1620,15 +1663,26 @@ private extension RichTextEditorViewController {
         return html.replacingOccurrences(of: "\n", with: "<br>")
     }
 
-    func exportedMentionHTML(for mention: any MentionItem) -> String {
+    func exportedMentionHTML(for mention: any MentionItem, trigger: MentionTrigger) -> String {
         let escapedName = escapedHTMLText(mention.name)
         let escapedIdentifier = escapedHTMLAttribute(mention.mentionIdentifier)
         switch mentionConfiguration.exportFormat {
         case .anchor:
-            return "<a class=\"mention\" data-mention-id=\"\(escapedIdentifier)\">@\(escapedName)</a>"
+            return "<a class=\"mention\" data-mention-id=\"\(escapedIdentifier)\">\(trigger.symbol)\(escapedName)</a>"
         case .custom(let formatter):
             return formatter(mention, escapedName, escapedIdentifier)
         }
+    }
+
+    /// The trigger stored alongside a mention when it was inserted; mentions
+    /// created before triggers existed fall back to "@".
+    func mentionTrigger(in attributedText: NSAttributedString, at index: Int) -> MentionTrigger {
+        guard let symbol = attributedText.attribute(.zssMentionTrigger, at: index, effectiveRange: nil) as? String,
+              let character = symbol.first,
+              let trigger = MentionTrigger(rawValue: character) else {
+            return .at
+        }
+        return trigger
     }
 
     func escapedHTMLText(_ text: String) -> String {
@@ -1687,7 +1741,7 @@ private extension RichTextEditorViewController {
             var effectiveRange = NSRange(location: 0, length: 0)
 
             if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
-                markdown += "@\(mention.name)"
+                markdown += "\(mentionTrigger(in: attributedText, at: index).symbol)\(mention.name)"
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 markdown += "[image]"
             } else {
@@ -1783,13 +1837,14 @@ private extension RichTextEditorViewController {
             return
         }
 
-        let query = String((editorTextView.text as NSString).substring(with: queryRange)
-            .dropFirst()
-        )
+        let matchedText = (editorTextView.text as NSString).substring(with: queryRange)
+        let trigger = matchedText.first.flatMap(MentionTrigger.init(rawValue:)) ?? .at
+        let query = String(matchedText.dropFirst())
         mentionQueryRange = queryRange
+        activeMentionTrigger = trigger
 
         if onMentionQueryChanged != nil {
-            if lastMentionQuery != query {
+            if lastMentionQuery != query || lastMentionTrigger != trigger {
                 scheduleMentionQueryChanged(query)
             }
             filteredMentions = remoteMentionSuggestions
@@ -1880,14 +1935,21 @@ private extension RichTextEditorViewController {
         let selection = editorTextView.selectedRange
         guard selection.length == 0, selection.location <= editorTextView.text.utf16.count else { return nil }
 
+        let triggers = mentionConfiguration.triggers
+        guard !triggers.isEmpty else { return nil }
+
+        let triggerClass = triggers
+            .map { NSRegularExpression.escapedPattern(for: $0.symbol) }
+            .joined()
         let prefixRange = NSRange(location: 0, length: selection.location)
-        let expression = try? NSRegularExpression(pattern: #"(?<!\S)@[A-Za-z0-9_]*$"#)
+        let expression = try? NSRegularExpression(pattern: "(?<!\\S)[\(triggerClass)][A-Za-z0-9_]*$")
         return expression?.firstMatch(in: editorTextView.text, range: prefixRange)?.range
     }
 
     func hideMentionSuggestions(endingSession: Bool = true, preservesQuery: Bool = false) {
         if !preservesQuery {
             mentionQueryRange = nil
+            activeMentionTrigger = nil
         }
         filteredMentions = []
         mentionSections = []
@@ -1913,6 +1975,7 @@ private extension RichTextEditorViewController {
 
     func scheduleMentionQueryChanged(_ query: String) {
         lastMentionQuery = query
+        lastMentionTrigger = activeMentionTrigger
         mentionQueryTask?.cancel()
         mentionQueryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -1928,6 +1991,7 @@ private extension RichTextEditorViewController {
         mentionQueryTask?.cancel()
         mentionQueryTask = nil
         lastMentionQuery = nil
+        lastMentionTrigger = nil
     }
 
     func mentionSuggestion(at indexPath: IndexPath) -> (any MentionItem)? {
@@ -2019,14 +2083,14 @@ private extension RichTextEditorViewController {
         }
     }
 
-    func mentionPillAttachment(for suggestion: any MentionItem) -> NSTextAttachment {
+    func mentionPillAttachment(for suggestion: any MentionItem, trigger: MentionTrigger) -> NSTextAttachment {
         let isSelf = isSelfMention(suggestion)
         let foregroundColor = isSelf ? mentionConfiguration.mentionForegroundColor : mentionConfiguration.otherMentionForegroundColor
         let backgroundColor = isSelf ? mentionConfiguration.mentionBackgroundColor : mentionConfiguration.otherMentionBackgroundColor
         let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
         let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
         let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
-        let text = suggestion.name as NSString
+        let text = (trigger.pillPrefix + suggestion.name) as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foregroundColor]
         let textSize = text.size(withAttributes: attributes)
         let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
@@ -2045,13 +2109,15 @@ private extension RichTextEditorViewController {
 
     func insertMention(_ suggestion: any MentionItem) {
         guard let queryRange = mentionQueryRange else { return }
+        let trigger = activeMentionTrigger ?? .at
 
         var trailingAttributes = editorTextView.typingAttributes
         trailingAttributes.removeValue(forKey: .backgroundColor)
         trailingAttributes[.foregroundColor] = UIColor.label
 
-        let replacement = NSMutableAttributedString(attachment: mentionPillAttachment(for: suggestion))
+        let replacement = NSMutableAttributedString(attachment: mentionPillAttachment(for: suggestion, trigger: trigger))
         replacement.addAttribute(.zssMentionItem, value: suggestion, range: NSRange(location: 0, length: replacement.length))
+        replacement.addAttribute(.zssMentionTrigger, value: trigger.symbol, range: NSRange(location: 0, length: replacement.length))
         replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
@@ -2230,6 +2296,7 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
 private extension NSAttributedString.Key {
     static let zssMentionItem = NSAttributedString.Key("com.zssinspirededitor.mentionItem")
+    static let zssMentionTrigger = NSAttributedString.Key("com.zssinspirededitor.mentionTrigger")
 }
 
 private extension String {

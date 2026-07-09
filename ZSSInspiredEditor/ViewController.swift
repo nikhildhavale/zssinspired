@@ -23,6 +23,14 @@ final class ViewController: UIViewController {
         RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-108", name: "Sam Rivera", image: .initials("SR"))
     ]
 
+    private let channels: [RichTextEditorViewController.MentionSuggestion] = [
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-1", name: "general", image: .initials("G")),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-2", name: "announcements", image: .initials("A")),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-3", name: "design", image: .initials("D")),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-4", name: "engineering", image: .initials("E")),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-5", name: "random", image: .initials("R"))
+    ]
+
     override func viewDidLoad() {
         super.viewDidLoad()
         installEditor()
@@ -88,6 +96,16 @@ extension ViewController: MentionSuggestionsProviding {
                 .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             print("mention query '\(query)' returned \(matches.count) result(s)")
+            completion(matches)
+        }
+    }
+
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { [channels] in
+            let matches = channels
+                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            print("hashtag query '\(query)' returned \(matches.count) result(s)")
             completion(matches)
         }
     }
