@@ -2,241 +2,6 @@ import UIKit
 
 public final class RichTextEditorViewController: UIViewController {
 
-    public enum MentionImage {
-        case uiImage(UIImage)
-        case url(URL)
-        case initials(String)
-    }
-
-    public enum MentionImageShape {
-        case circle
-        case roundedRectangle(cornerRadius: CGFloat)
-    }
-
-    public enum MentionExportFormat {
-        case anchor
-        case custom((_ mention: any MentionItem, _ escapedName: String, _ escapedIdentifier: String) -> String)
-    }
-
-    /// The character that starts a mention session. "@" mentions render as a
-    /// bare name pill; "#" mentions keep the "#" visible in the editor.
-    public enum MentionTrigger: Character, CaseIterable {
-        case at = "@"
-        case hash = "#"
-
-        public var symbol: String { String(rawValue) }
-
-        var pillPrefix: String {
-            self == .hash ? symbol : ""
-        }
-    }
-
-    public protocol MentionItem {
-        var mentionIdentifier: String { get }
-        var name: String { get }
-        var image: MentionImage? { get }
-        var isSelfMention: Bool { get }
-    }
-
-    public struct MentionSuggestion: MentionItem {
-        public var mentionIdentifier: String
-        public var name: String
-        public var image: MentionImage?
-        public var isSelfMention: Bool
-
-        public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false) {
-            self.mentionIdentifier = mentionIdentifier ?? name
-            self.name = name
-            self.image = image
-            self.isSelfMention = isSelfMention
-        }
-    }
-
-    public struct MentionConfiguration {
-        /// Characters that open a mention session while typing.
-        public var triggers: [MentionTrigger]
-        public var suggestions: [any MentionItem]
-        public var selfMentionLabel: String
-        public var mentionForegroundColor: UIColor
-        public var mentionBackgroundColor: UIColor
-        public var otherMentionForegroundColor: UIColor
-        public var otherMentionBackgroundColor: UIColor
-        public var mentionHorizontalPadding: CGFloat
-        public var mentionVerticalPadding: CGFloat
-        public var mentionCornerRadius: CGFloat
-        public var suggestionForegroundColor: UIColor
-        public var suggestionBackgroundColor: UIColor
-        public var initialsBackgroundColors: [UIColor]
-        public var imageShape: MentionImageShape
-        public var imageSize: CGFloat
-        public var rowHeight: CGFloat
-        public var showsAlphabeticalSections: Bool
-        public var sectionHeaderHeight: CGFloat
-        public var sectionHeaderForegroundColor: UIColor
-        public var sectionHeaderBackgroundColor: UIColor
-        public var maximumVisibleRows: Int
-        public var listWidth: CGFloat
-        public var cornerRadius: CGFloat
-        public var exportFormat: MentionExportFormat
-        public var loadingText: String
-
-        public init(
-            triggers: [MentionTrigger] = [.at, .hash],
-            suggestions: [any MentionItem] = [
-                MentionSuggestion(name: "Alice"),
-                MentionSuggestion(name: "Bob"),
-                MentionSuggestion(name: "Charlie"),
-                MentionSuggestion(name: "David"),
-                MentionSuggestion(name: "Emma"),
-                MentionSuggestion(name: "Nikhil", isSelfMention: true)
-            ],
-            selfMentionLabel: String = "You",
-            mentionForegroundColor: UIColor = .white,
-            mentionBackgroundColor: UIColor = .systemBlue,
-            otherMentionForegroundColor: UIColor = .label,
-            otherMentionBackgroundColor: UIColor = .systemGray5,
-            mentionHorizontalPadding: CGFloat = 6,
-            mentionVerticalPadding: CGFloat = 2,
-            mentionCornerRadius: CGFloat = 6,
-            suggestionForegroundColor: UIColor = .label,
-            suggestionBackgroundColor: UIColor = .secondarySystemBackground,
-            initialsBackgroundColors: [UIColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPink, .systemPurple, .systemTeal],
-            imageShape: MentionImageShape = .circle,
-            imageSize: CGFloat = 44,
-            rowHeight: CGFloat = 56,
-            showsAlphabeticalSections: Bool = true,
-            sectionHeaderHeight: CGFloat = 28,
-            sectionHeaderForegroundColor: UIColor = .secondaryLabel,
-            sectionHeaderBackgroundColor: UIColor = .tertiarySystemBackground,
-            maximumVisibleRows: Int = 4,
-            listWidth: CGFloat = 280,
-            cornerRadius: CGFloat = 10,
-            exportFormat: MentionExportFormat = .anchor,
-            loadingText: String = "Loading..."
-        ) {
-            self.triggers = triggers
-            self.suggestions = suggestions
-            self.selfMentionLabel = selfMentionLabel
-            self.mentionForegroundColor = mentionForegroundColor
-            self.mentionBackgroundColor = mentionBackgroundColor
-            self.otherMentionForegroundColor = otherMentionForegroundColor
-            self.otherMentionBackgroundColor = otherMentionBackgroundColor
-            self.mentionHorizontalPadding = mentionHorizontalPadding
-            self.mentionVerticalPadding = mentionVerticalPadding
-            self.mentionCornerRadius = mentionCornerRadius
-            self.suggestionForegroundColor = suggestionForegroundColor
-            self.suggestionBackgroundColor = suggestionBackgroundColor
-            self.initialsBackgroundColors = initialsBackgroundColors
-            self.imageShape = imageShape
-            self.imageSize = imageSize
-            self.rowHeight = rowHeight
-            self.showsAlphabeticalSections = showsAlphabeticalSections
-            self.sectionHeaderHeight = sectionHeaderHeight
-            self.sectionHeaderForegroundColor = sectionHeaderForegroundColor
-            self.sectionHeaderBackgroundColor = sectionHeaderBackgroundColor
-            self.maximumVisibleRows = maximumVisibleRows
-            self.listWidth = listWidth
-            self.cornerRadius = cornerRadius
-            self.exportFormat = exportFormat
-            self.loadingText = loadingText
-        }
-    }
-
-    public struct ToolbarColor {
-        public var name: String
-        public var color: UIColor
-
-        public init(name: String, color: UIColor) {
-            self.name = name
-            self.color = color
-        }
-    }
-
-    public struct ToolbarAction {
-        public var title: String
-        public var imageName: String?
-        public var handler: () -> Void
-
-        public init(title: String, imageName: String? = nil, handler: @escaping () -> Void) {
-            self.title = title
-            self.imageName = imageName
-            self.handler = handler
-        }
-    }
-
-    public enum PlusButtonBehavior {
-        case action(ToolbarAction)
-        case menu([ToolbarAction])
-    }
-
-    /// Like `ToolbarAction`, but the handler receives the editor's current
-    /// markdown so the host app gets the content directly on the call.
-    public struct MarkdownToolbarAction {
-        public var title: String
-        public var imageName: String?
-        public var handler: (_ markdown: String) -> Void
-
-        public init(title: String, imageName: String? = nil, handler: @escaping (_ markdown: String) -> Void) {
-            self.title = title
-            self.imageName = imageName
-            self.handler = handler
-        }
-    }
-
-    public enum MarkdownPlusButtonBehavior {
-        case action(MarkdownToolbarAction)
-        case menu([MarkdownToolbarAction])
-    }
-
-    public struct ToolbarConfiguration {
-        /// The editing mode the toolbar is configured for. Determines which
-        /// toolbar options are shown; change it (or call `setContentMode`)
-        /// to switch between rich text and markdown.
-        public var contentMode: ContentMode
-        /// Whether the toolbar shows the Rich Text / Markdown mode switch.
-        /// Set to false to lock the editor to `contentMode`.
-        public var showsModeControl: Bool
-        public var plusButtonBehavior: PlusButtonBehavior?
-        /// Plus button behavior used while in markdown mode; its handlers are
-        /// passed the editor's current markdown. When nil, markdown mode falls
-        /// back to `plusButtonBehavior`.
-        public var markdownPlusButtonBehavior: MarkdownPlusButtonBehavior?
-        /// Fill color of the plus button in markdown mode.
-        public var plusButtonColor: UIColor
-        public var foregroundColors: [ToolbarColor]
-        public var backgroundColors: [ToolbarColor]
-
-        public init(
-            contentMode: ContentMode = .richText,
-            showsModeControl: Bool = true,
-            plusButtonBehavior: PlusButtonBehavior? = nil,
-            markdownPlusButtonBehavior: MarkdownPlusButtonBehavior? = nil,
-            plusButtonColor: UIColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1),
-            foregroundColors: [ToolbarColor] = [
-                ToolbarColor(name: "Default", color: .label),
-                ToolbarColor(name: "Red", color: .systemRed),
-                ToolbarColor(name: "Blue", color: .systemBlue),
-                ToolbarColor(name: "Green", color: .systemGreen),
-                ToolbarColor(name: "Orange", color: .systemOrange),
-                ToolbarColor(name: "Purple", color: .systemPurple)
-            ],
-            backgroundColors: [ToolbarColor] = [
-                ToolbarColor(name: "Yellow", color: .systemYellow.withAlphaComponent(0.45)),
-                ToolbarColor(name: "Green", color: .systemGreen.withAlphaComponent(0.35)),
-                ToolbarColor(name: "Blue", color: .systemBlue.withAlphaComponent(0.3)),
-                ToolbarColor(name: "Pink", color: .systemPink.withAlphaComponent(0.3))
-            ]
-        ) {
-            self.contentMode = contentMode
-            self.showsModeControl = showsModeControl
-            self.plusButtonBehavior = plusButtonBehavior
-            self.markdownPlusButtonBehavior = markdownPlusButtonBehavior
-            self.plusButtonColor = plusButtonColor
-            self.foregroundColors = foregroundColors
-            self.backgroundColors = backgroundColors
-        }
-    }
-
     public var mentionConfiguration: MentionConfiguration {
         didSet {
             guard isViewLoaded else { return }
@@ -295,89 +60,44 @@ public final class RichTextEditorViewController: UIViewController {
         attributedStringToMarkdown(editorTextView.attributedText)
     }
 
-    fileprivate enum EditorMode {
-        case richText
-        case html
-    }
-
-    fileprivate enum ListMode {
-        case none
-        case unordered
-        case ordered
-    }
-
-    fileprivate enum HeadingStyle: String, CaseIterable, Hashable {
-        case paragraph = "P"
-        case h1 = "H1"
-        case h2 = "H2"
-        case h3 = "H3"
-        case h4 = "H4"
-        case h5 = "H5"
-        case h6 = "H6"
-
-        var pointSize: CGFloat {
-            switch self {
-            case .paragraph: return 17
-            case .h1: return 34
-            case .h2: return 28
-            case .h3: return 24
-            case .h4: return 21
-            case .h5: return 19
-            case .h6: return 17
-            }
-        }
-
-        var isBold: Bool {
-            self != .paragraph
+    /// Placeholder shown while the editor is empty.
+    public var placeholder: String = "Start writing..." {
+        didSet {
+            guard isViewLoaded else { return }
+            placeholderLabel.text = placeholder
         }
     }
 
-    fileprivate enum ToolbarItem: Hashable {
-        case bold
-        case italic
-        case underline
-        case strikeThrough
-        case subscriptStyle
-        case superscriptStyle
-        case heading(HeadingStyle)
-        case alignLeft
-        case alignCenter
-        case alignRight
-        case alignJustified
-        case unorderedList
-        case orderedList
-        case outdent
-        case link
-        case removeLink
-        case foregroundColor
-        case backgroundColor
+    /// Replaces the editor content with `markdown`, converted to the
+    /// attributed string the editor displays in edit mode. Understands the
+    /// dialect the `markdown` getter emits: `**bold**`, `*italic*`,
+    /// `__underline__`, `~~strikethrough~~`, `[text](url)`, `#`–`######`
+    /// headings, `- ` bullets, literal `1. ` numbered lists and 4-space
+    /// list indents. Safe to call before the view is loaded.
+    public func setMarkdown(_ markdown: String) {
+        loadViewIfNeeded()
+        setEditorContent(markdownToAttributedString(markdown))
     }
 
-    public enum ContentMode {
-        case richText
-        case markdown
+    /// Replaces the editor content with `html`. Safe to call before the
+    /// view is loaded.
+    public func setHTML(_ html: String) {
+        loadViewIfNeeded()
+        setEditorContent(attributedString(fromHTML: html))
+        if editorMode == .html {
+            htmlTextView.text = html
+        }
     }
 
-    fileprivate enum ToolbarOption {
-        case textStyle
-        case bold
-        case italic
-        case underline
-        case strikeThrough
-        case baseline
-        case clear
-        case alignment
-        case lists
-        case links
-        case colors
-        case undoRedo
-        case separator
-        case bulletList
-        case numberedList
-        case outdent
-        case indent
-        case addLink
-        case removeLink
+    /// Gives keyboard focus to the editor. Safe to call before the view is
+    /// loaded (though the keyboard only appears once the view is in a window).
+    public func focus() {
+        loadViewIfNeeded()
+        if editorMode == .html {
+            htmlTextView.becomeFirstResponder()
+        } else {
+            editorTextView.becomeFirstResponder()
+        }
     }
 
     private let richTextToolbarOptions: [ToolbarOption] = [
@@ -421,8 +141,8 @@ public final class RichTextEditorViewController: UIViewController {
     private var toolbarButtons: [ToolbarItem: UIButton] = [:]
     private weak var listsMenuButton: UIButton?
 
-    private let baseFont = UIFont.preferredFont(forTextStyle: .body)
-    private let linkColor = UIColor.systemBlue
+    let baseFont = UIFont.preferredFont(forTextStyle: .body)
+    let linkColor = UIColor.systemBlue
 
     public init(
         mentionConfiguration: MentionConfiguration = MentionConfiguration(),
@@ -668,7 +388,7 @@ private extension RichTextEditorViewController {
         editorTextView.textContainerInset = UIEdgeInsets(top: 22, left: 18, bottom: 22, right: 18)
         editorTextView.typingAttributes = defaultTypingAttributes()
 
-        placeholderLabel.text = "Start writing..."
+        placeholderLabel.text = placeholder
         placeholderLabel.textColor = .placeholderText
         placeholderLabel.font = baseFont
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -1186,34 +906,15 @@ private extension RichTextEditorViewController {
     }
 }
 
-private extension RichTextEditorViewController {
-
-    func defaultTypingAttributes() -> [NSAttributedString.Key: Any] {
-        [
-            .font: baseFont,
-            .foregroundColor: UIColor.label,
-            .paragraphStyle: defaultParagraphStyle()
-        ]
-    }
+// Styling helpers shared with RichTextEditorViewController+Markdown.swift,
+// so they are internal rather than part of the private extension below.
+extension RichTextEditorViewController {
 
     func defaultParagraphStyle() -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 2
         style.paragraphSpacing = 8
         return style
-    }
-
-    func currentFont() -> UIFont {
-        if let font = editorTextView.typingAttributes[.font] as? UIFont {
-            return font
-        }
-
-        let location = max(0, editorTextView.selectedRange.location - 1)
-        guard editorTextView.attributedText.length > location else {
-            return baseFont
-        }
-
-        return editorTextView.attributedText.attribute(.font, at: location, effectiveRange: nil) as? UIFont ?? baseFont
     }
 
     func fontMatching(_ font: UIFont, pointSize: CGFloat? = nil, forceBold: Bool? = nil) -> UIFont {
@@ -1228,6 +929,41 @@ private extension RichTextEditorViewController {
 
         let descriptor = font.fontDescriptor.withSymbolicTraits(traits) ?? font.fontDescriptor
         return UIFont(descriptor: descriptor, size: pointSize ?? font.pointSize)
+    }
+
+    /// The trigger stored alongside a mention when it was inserted; mentions
+    /// created before triggers existed fall back to "@".
+    func mentionTrigger(in attributedText: NSAttributedString, at index: Int) -> MentionTrigger {
+        guard let symbol = attributedText.attribute(.zssMentionTrigger, at: index, effectiveRange: nil) as? String,
+              let character = symbol.first,
+              let trigger = MentionTrigger(rawValue: character) else {
+            return .at
+        }
+        return trigger
+    }
+}
+
+private extension RichTextEditorViewController {
+
+    func defaultTypingAttributes() -> [NSAttributedString.Key: Any] {
+        [
+            .font: baseFont,
+            .foregroundColor: UIColor.label,
+            .paragraphStyle: defaultParagraphStyle()
+        ]
+    }
+
+    func currentFont() -> UIFont {
+        if let font = editorTextView.typingAttributes[.font] as? UIFont {
+            return font
+        }
+
+        let location = max(0, editorTextView.selectedRange.location - 1)
+        guard editorTextView.attributedText.length > location else {
+            return baseFont
+        }
+
+        return editorTextView.attributedText.attribute(.font, at: location, effectiveRange: nil) as? UIFont ?? baseFont
     }
 
     func toggleFontTrait(_ trait: UIFontDescriptor.SymbolicTraits) {
@@ -1808,17 +1544,6 @@ private extension RichTextEditorViewController {
         }
     }
 
-    /// The trigger stored alongside a mention when it was inserted; mentions
-    /// created before triggers existed fall back to "@".
-    func mentionTrigger(in attributedText: NSAttributedString, at index: Int) -> MentionTrigger {
-        guard let symbol = attributedText.attribute(.zssMentionTrigger, at: index, effectiveRange: nil) as? String,
-              let character = symbol.first,
-              let trigger = MentionTrigger(rawValue: character) else {
-            return .at
-        }
-        return trigger
-    }
-
     func escapedHTMLText(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -1833,19 +1558,40 @@ private extension RichTextEditorViewController {
     }
 
     func syncHTMLToEditor() {
-        guard let data = htmlTextView.text.data(using: .utf8) else { return }
-        let attributedText = try? NSMutableAttributedString(
-            data: data,
-            options: [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue
-            ],
-            documentAttributes: nil
-        )
-
-        editorTextView.attributedText = attributedText ?? NSAttributedString(string: htmlTextView.text, attributes: defaultTypingAttributes())
+        editorTextView.attributedText = attributedString(fromHTML: htmlTextView.text)
         editorTextView.typingAttributes = defaultTypingAttributes()
         updatePlaceholder()
+        refreshInsertedMentions()
+    }
+
+    func attributedString(fromHTML html: String) -> NSAttributedString {
+        guard
+            let data = html.data(using: .utf8),
+            let attributedText = try? NSMutableAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+            )
+        else {
+            return NSAttributedString(string: html, attributes: defaultTypingAttributes())
+        }
+        return attributedText
+    }
+
+    /// Shared tail of the public content setters: installs the new content,
+    /// resets editing state that referred to the old text, and refreshes UI.
+    func setEditorContent(_ content: NSAttributedString) {
+        endMentionSession()
+        editorTextView.attributedText = content
+        editorTextView.typingAttributes = defaultTypingAttributes()
+        editorTextView.selectedRange = NSRange(location: content.length, length: 0)
+        listMode = .none
+        orderedListCounter = 1
+        updatePlaceholder()
+        updateToolbarSelectionState()
         refreshInsertedMentions()
     }
 
@@ -1855,110 +1601,6 @@ private extension RichTextEditorViewController {
         attributes[.foregroundColor] = linkColor
         attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
         return attributes
-    }
-
-    func headingMarkdownPrefix(for font: UIFont) -> String? {
-        guard font.fontDescriptor.symbolicTraits.contains(.traitBold) else { return nil }
-        let headingLevels: [(style: HeadingStyle, level: Int)] = [(.h1, 1), (.h2, 2), (.h3, 3), (.h4, 4), (.h5, 5)]
-        for entry in headingLevels where abs(font.pointSize - entry.style.pointSize) < 0.5 {
-            return String(repeating: "#", count: entry.level) + " "
-        }
-        return nil
-    }
-
-    func attributedStringToMarkdown(_ attributedString: NSAttributedString) -> String {
-        var markdown = ""
-        var index = 0
-        let attributedText = attributedString
-
-        while index < attributedText.length {
-            var effectiveRange = NSRange(location: 0, length: 0)
-
-            if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
-                markdown += "\(mentionTrigger(in: attributedText, at: index).symbol)\(mention.name)"
-            } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
-                markdown += "[image]"
-            } else {
-                let text = attributedText.attributedSubstring(from: effectiveRange).string
-                var core = text
-                var trailingNewlines = ""
-                while core.hasSuffix("\n") {
-                    core.removeLast()
-                    trailingNewlines += "\n"
-                }
-
-                var formattedText = core
-
-                if !core.isEmpty {
-                    if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
-                        if let headingPrefix = headingMarkdownPrefix(for: font) {
-                            formattedText = core
-                                .components(separatedBy: "\n")
-                                .map { $0.isEmpty ? $0 : headingPrefix + $0 }
-                                .joined(separator: "\n")
-                        } else {
-                            let traits = font.fontDescriptor.symbolicTraits
-                            if traits.contains(.traitBold) {
-                                formattedText = "**\(formattedText)**"
-                            }
-                            if traits.contains(.traitItalic) {
-                                formattedText = "*\(formattedText)*"
-                            }
-                        }
-                    }
-
-                    if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
-                        formattedText = "__\(formattedText)__"
-                    }
-
-                    if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
-                        formattedText = "~~\(formattedText)~~"
-                    }
-
-                    if let link = attributedText.attribute(.link, at: index, effectiveRange: nil) as? URL {
-                        formattedText = "[\(formattedText)](\(link.absoluteString))"
-                    }
-                }
-
-                markdown += formattedText + trailingNewlines
-            }
-            index = effectiveRange.upperBound
-        }
-
-        let indentLevels = paragraphIndentLevels(of: attributedText)
-        return markdown
-            .components(separatedBy: "\n")
-            .enumerated()
-            .map { lineIndex, line in
-                var converted = line.replacingOccurrences(of: #"^(\s*)•\s?"#, with: "$1- ", options: .regularExpression)
-                let level = lineIndex < indentLevels.count ? indentLevels[lineIndex] : 0
-                let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
-                if level > 0 && isListLine {
-                    converted = String(repeating: "    ", count: level) + converted
-                }
-                return converted
-            }
-            .joined(separator: "\n")
-    }
-
-    /// Indent level per paragraph (split on "\n"), derived from the 24pt steps applied by indent/outdent.
-    private func paragraphIndentLevels(of attributedString: NSAttributedString) -> [Int] {
-        let nsString = attributedString.string as NSString
-        var levels: [Int] = []
-        var location = 0
-        while true {
-            if location < nsString.length,
-               let style = attributedString.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle {
-                levels.append(max(0, Int((style.headIndent / 24).rounded())))
-            } else {
-                levels.append(0)
-            }
-            let remaining = NSRange(location: location, length: nsString.length - location)
-            let newlineRange = nsString.range(of: "\n", options: [], range: remaining)
-            if newlineRange.location == NSNotFound { break }
-            location = newlineRange.location + 1
-        }
-        return levels
     }
 
     func updatePlaceholder() {
@@ -2428,7 +2070,7 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
     }
 }
 
-private extension NSAttributedString.Key {
+extension NSAttributedString.Key {
     static let zssMentionItem = NSAttributedString.Key("com.zssinspirededitor.mentionItem")
     static let zssMentionTrigger = NSAttributedString.Key("com.zssinspirededitor.mentionTrigger")
 }

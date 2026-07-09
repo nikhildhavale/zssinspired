@@ -128,6 +128,25 @@ let markdown = editor.markdown  // Get markdown representation
 
 The editor automatically converts formatting (bold, italic, underline, strikethrough, links) to their Markdown equivalents.
 
+## Setting Content, Mode, Placeholder, and Focus
+
+```swift
+let editor = RichTextEditorViewController()
+
+// Start in markdown mode (or lock it there with showsModeControl: false).
+editor.setContentMode(.markdown)
+
+// Hand off existing content — markdown is converted back to the styled
+// attributed string the editor displays in edit mode.
+editor.setMarkdown("# Title\n\n**Bold** and [a link](https://example.com)")
+editor.setHTML("<b>Bold</b> and <i>italic</i>")  // alternatively, from HTML
+
+editor.placeholder = "Write a comment..."
+editor.focus()  // give the editor keyboard focus
+```
+
+`setMarkdown(_:)` understands the same dialect the `markdown` getter emits: `**bold**`, `*italic*`, `__underline__`, `~~strikethrough~~`, `[text](url)`, `#`–`######` headings, `- ` bullets, `1. ` numbered lists, and 4-space list indents.
+
 ## License
 
 MIT
