@@ -11,7 +11,6 @@ import ZSSEditorKit
 final class ViewController: UIViewController {
 
     private let editor = RichTextEditorViewController()
-    private var mentionSearchTask: Task<Void, Never>?
 
     private let remotePeople: [RichTextEditorViewController.MentionSuggestion] = [
         RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-101", name: "Alice Johnson", image: .url(URL(string: "https://i.pravatar.cc/96?img=1")!)),
@@ -45,15 +44,7 @@ final class ViewController: UIViewController {
         )
         editor.toolbarConfiguration = toolbarConfiguration
 
-        editor.onMentionQueryChanged = { [weak self] query in
-            self?.performRemoteMentionSearch(query: query)
-        }
-        editor.onMentionInserted = { [weak self] mention in
-            self?.logMentionState(event: "inserted \(mention.name) [\(mention.mentionIdentifier)]")
-        }
-        editor.onMentionRemoved = { [weak self] mention in
-            self?.logMentionState(event: "removed \(mention.name) [\(mention.mentionIdentifier)]")
-        }
+        editor.mentionProvider = self
     }
 
     private func installEditor() {
@@ -67,31 +58,6 @@ final class ViewController: UIViewController {
             editor.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         editor.didMove(toParent: self)
-    }
-
-    private func performRemoteMentionSearch(query: String?) {
-        mentionSearchTask?.cancel()
-
-        guard let query else {
-            editor.setMentionSuggestionsLoading(false)
-            print("mention query ended")
-            return
-        }
-
-        editor.setMentionSuggestionsLoading(true)
-        mentionSearchTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 650_000_000)
-            guard !Task.isCancelled, let self else { return }
-
-            let matches = remotePeople
-                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            await MainActor.run {
-                self.editor.updateMentionSuggestions(matches)
-                print("mention query '\(query)' returned \(matches.count) result(s)")
-            }
-        }
     }
 
     private func logMentionState(event: String) {
@@ -109,5 +75,32 @@ final class ViewController: UIViewController {
         })
         alert.addAction(UIAlertAction(title: "Done", style: .cancel))
         present(alert, animated: true)
+    }
+}
+
+extension ViewController: MentionSuggestionsProviding {
+
+    func fetchMentionSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
+        // Simulated network latency; a real host app would fire its API call here
+        // and invoke `completion` from the response callback (any thread is fine).
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.65) { [remotePeople] in
+            let matches = remotePeople
+                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            print("mention query '\(query)' returned \(matches.count) result(s)")
+            completion(matches)
+        }
+    }
+
+    func mentionSessionDidEnd() {
+        print("mention query ended")
+    }
+
+    func mentionInserted(_ mention: any RichTextEditorViewController.MentionItem) {
+        logMentionState(event: "inserted \(mention.name) [\(mention.mentionIdentifier)]")
+    }
+
+    func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem) {
+        logMentionState(event: "removed \(mention.name) [\(mention.mentionIdentifier)]")
     }
 }

@@ -203,6 +203,15 @@ public final class RichTextEditorViewController: UIViewController {
     public var onMentionRemoved: ((any MentionItem) -> Void)?
     public private(set) var insertedMentions: [any MentionItem] = []
 
+    /// Protocol-based alternative to the `onMention*` closures. Setting this
+    /// installs a bridge over `onMentionQueryChanged`, `onMentionInserted` and
+    /// `onMentionRemoved` (replacing any closures assigned there); setting it
+    /// back to nil clears them. Held weakly — the host app must retain the provider.
+    public weak var mentionProvider: (any MentionSuggestionsProviding)? {
+        didSet { installMentionProviderBridge() }
+    }
+    private var mentionProviderQueryGeneration = 0
+
     public var html: String {
         htmlString()
     }
@@ -382,6 +391,43 @@ public final class RichTextEditorViewController: UIViewController {
             filteredMentions = []
         }
         showMentionSuggestionsIfNeeded()
+    }
+
+    private func installMentionProviderBridge() {
+        mentionProviderQueryGeneration += 1
+
+        guard mentionProvider != nil else {
+            onMentionQueryChanged = nil
+            onMentionInserted = nil
+            onMentionRemoved = nil
+            return
+        }
+
+        onMentionQueryChanged = { [weak self] query in
+            guard let self else { return }
+            self.mentionProviderQueryGeneration += 1
+            let generation = self.mentionProviderQueryGeneration
+
+            guard let query else {
+                self.setMentionSuggestionsLoading(false)
+                self.mentionProvider?.mentionSessionDidEnd()
+                return
+            }
+
+            self.setMentionSuggestionsLoading(true)
+            self.mentionProvider?.fetchMentionSuggestions(for: query) { [weak self] items in
+                DispatchQueue.main.async {
+                    guard let self, generation == self.mentionProviderQueryGeneration else { return }
+                    self.updateMentionSuggestions(items)
+                }
+            }
+        }
+        onMentionInserted = { [weak self] mention in
+            self?.mentionProvider?.mentionInserted(mention)
+        }
+        onMentionRemoved = { [weak self] mention in
+            self?.mentionProvider?.mentionRemoved(mention)
+        }
     }
 }
 
