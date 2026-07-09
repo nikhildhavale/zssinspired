@@ -178,6 +178,8 @@ public final class RichTextEditorViewController: UIViewController {
         /// Set to false to lock the editor to `contentMode`.
         public var showsModeControl: Bool
         public var plusButtonBehavior: PlusButtonBehavior?
+        /// Fill color of the plus button in markdown mode.
+        public var plusButtonColor: UIColor
         public var foregroundColors: [ToolbarColor]
         public var backgroundColors: [ToolbarColor]
 
@@ -185,6 +187,7 @@ public final class RichTextEditorViewController: UIViewController {
             contentMode: ContentMode = .richText,
             showsModeControl: Bool = true,
             plusButtonBehavior: PlusButtonBehavior? = nil,
+            plusButtonColor: UIColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1),
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -203,6 +206,7 @@ public final class RichTextEditorViewController: UIViewController {
             self.contentMode = contentMode
             self.showsModeControl = showsModeControl
             self.plusButtonBehavior = plusButtonBehavior
+            self.plusButtonColor = plusButtonColor
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }
@@ -729,7 +733,7 @@ private extension RichTextEditorViewController {
         var configuration: UIButton.Configuration
         if contentMode == .markdown {
             configuration = .filled()
-            configuration.baseBackgroundColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1)
+            configuration.baseBackgroundColor = toolbarConfiguration.plusButtonColor
             configuration.baseForegroundColor = .white
         } else {
             configuration = .bordered()
