@@ -169,6 +169,25 @@ public final class RichTextEditorViewController: UIViewController {
         case menu([ToolbarAction])
     }
 
+    /// Like `ToolbarAction`, but the handler receives the editor's current
+    /// markdown so the host app gets the content directly on the call.
+    public struct MarkdownToolbarAction {
+        public var title: String
+        public var imageName: String?
+        public var handler: (_ markdown: String) -> Void
+
+        public init(title: String, imageName: String? = nil, handler: @escaping (_ markdown: String) -> Void) {
+            self.title = title
+            self.imageName = imageName
+            self.handler = handler
+        }
+    }
+
+    public enum MarkdownPlusButtonBehavior {
+        case action(MarkdownToolbarAction)
+        case menu([MarkdownToolbarAction])
+    }
+
     public struct ToolbarConfiguration {
         /// The editing mode the toolbar is configured for. Determines which
         /// toolbar options are shown; change it (or call `setContentMode`)
@@ -178,6 +197,10 @@ public final class RichTextEditorViewController: UIViewController {
         /// Set to false to lock the editor to `contentMode`.
         public var showsModeControl: Bool
         public var plusButtonBehavior: PlusButtonBehavior?
+        /// Plus button behavior used while in markdown mode; its handlers are
+        /// passed the editor's current markdown. When nil, markdown mode falls
+        /// back to `plusButtonBehavior`.
+        public var markdownPlusButtonBehavior: MarkdownPlusButtonBehavior?
         /// Fill color of the plus button in markdown mode.
         public var plusButtonColor: UIColor
         public var foregroundColors: [ToolbarColor]
@@ -187,6 +210,7 @@ public final class RichTextEditorViewController: UIViewController {
             contentMode: ContentMode = .richText,
             showsModeControl: Bool = true,
             plusButtonBehavior: PlusButtonBehavior? = nil,
+            markdownPlusButtonBehavior: MarkdownPlusButtonBehavior? = nil,
             plusButtonColor: UIColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1),
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
@@ -206,6 +230,7 @@ public final class RichTextEditorViewController: UIViewController {
             self.contentMode = contentMode
             self.showsModeControl = showsModeControl
             self.plusButtonBehavior = plusButtonBehavior
+            self.markdownPlusButtonBehavior = markdownPlusButtonBehavior
             self.plusButtonColor = plusButtonColor
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
@@ -573,7 +598,7 @@ private extension RichTextEditorViewController {
         }
         toolbarButtons.removeAll()
 
-        if let plusButtonBehavior = toolbarConfiguration.plusButtonBehavior {
+        if let plusButtonBehavior = resolvedPlusButtonBehavior() {
             addPlusButton(behavior: plusButtonBehavior)
             if contentMode == .richText {
                 toolbarStackView.addArrangedSubview(separator())
@@ -727,6 +752,29 @@ private extension RichTextEditorViewController {
         button.showsMenuAsPrimaryAction = true
         toolbarStackView.addArrangedSubview(button)
         return button
+    }
+
+    /// In markdown mode, `markdownPlusButtonBehavior` wins and its handlers are
+    /// invoked with the markdown captured at tap time; otherwise the shared
+    /// `plusButtonBehavior` is used.
+    func resolvedPlusButtonBehavior() -> PlusButtonBehavior? {
+        guard contentMode == .markdown, let markdownBehavior = toolbarConfiguration.markdownPlusButtonBehavior else {
+            return toolbarConfiguration.plusButtonBehavior
+        }
+
+        func bridged(_ action: MarkdownToolbarAction) -> ToolbarAction {
+            ToolbarAction(title: action.title, imageName: action.imageName) { [weak self] in
+                guard let self else { return }
+                action.handler(self.markdown)
+            }
+        }
+
+        switch markdownBehavior {
+        case .action(let action):
+            return .action(bridged(action))
+        case .menu(let actions):
+            return .menu(actions.map(bridged))
+        }
     }
 
     func addPlusButton(behavior: PlusButtonBehavior) {

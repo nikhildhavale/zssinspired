@@ -47,7 +47,13 @@ final class ViewController: UIViewController {
         var toolbarConfiguration = editor.toolbarConfiguration
         toolbarConfiguration.plusButtonBehavior = .action(
             RichTextEditorViewController.ToolbarAction(title: "Markdown", imageName: "doc.text") { [weak self] in
-                self?.showMarkdownView()
+                guard let self else { return }
+                self.showMarkdownView(self.editor.markdown)
+            }
+        )
+        toolbarConfiguration.markdownPlusButtonBehavior = .action(
+            RichTextEditorViewController.MarkdownToolbarAction(title: "Markdown", imageName: "doc.text") { [weak self] markdown in
+                self?.showMarkdownView(markdown)
             }
         )
         editor.toolbarConfiguration = toolbarConfiguration
@@ -75,8 +81,7 @@ final class ViewController: UIViewController {
         print("export html: \(editor.html)")
     }
 
-    private func showMarkdownView() {
-        let markdownText = editor.markdown
+    private func showMarkdownView(_ markdownText: String) {
         let alert = UIAlertController(title: "Markdown", message: markdownText.isEmpty ? "No content" : markdownText, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
             UIPasteboard.general.string = markdownText
