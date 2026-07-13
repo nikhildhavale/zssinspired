@@ -271,6 +271,7 @@ private extension RichTextEditorViewController {
         toolbarScrollView.showsHorizontalScrollIndicator = false
         toolbarScrollView.showsVerticalScrollIndicator = false
         toolbarScrollView.alwaysBounceVertical = false
+        toolbarScrollView.delegate = self
         toolbarScrollView.backgroundColor = .secondarySystemBackground
 
         toolbarStackView.translatesAutoresizingMaskIntoConstraints = false
@@ -1972,6 +1973,17 @@ private extension RichTextEditorViewController {
             mentions.append(mention)
         }
         return mentions
+    }
+}
+
+extension RichTextEditorViewController: UIScrollViewDelegate {
+
+    /// The toolbar only ever scrolls horizontally; clamp out any vertical
+    /// offset a drag or bounce introduces instead of relying solely on
+    /// `alwaysBounceVertical`/layout to keep its content height pinned.
+    public func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView == toolbarScrollView, scrollView.contentOffset.y != 0 else { return }
+        scrollView.contentOffset.y = 0
     }
 }
 
