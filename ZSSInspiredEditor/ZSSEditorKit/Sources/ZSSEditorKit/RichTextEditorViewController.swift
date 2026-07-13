@@ -1225,7 +1225,8 @@ private extension RichTextEditorViewController {
 
     /// Indent level of the paragraph at the caret, in 24pt indent steps.
     private func currentIndentLevel() -> Int {
-        guard let range = selectionInspectionRange(),
+        let range = currentParagraphRange()
+        guard range.location < editorTextView.attributedText.length,
               let style = editorTextView.attributedText.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle else {
             return 0
         }
@@ -1243,17 +1244,17 @@ private extension RichTextEditorViewController {
         }
     }
 
+    /// Range to inspect for the current character/font attributes, or nil to
+    /// fall back to `typingAttributes` (a bare caret with no selection: the
+    /// attributes of the *next* character typed, which is what `typingAttributes`
+    /// tracks — including attributes just toggled at the caret before any
+    /// text has been typed to carry them).
     func selectionInspectionRange() -> NSRange? {
-        let textLength = editorTextView.attributedText.length
-        guard textLength > 0 else { return nil }
-
         let selection = editorTextView.selectedRange
-        if selection.length > 0 {
-            return NSRange(location: selection.location, length: min(selection.length, textLength - selection.location))
-        }
+        guard selection.length > 0 else { return nil }
 
-        let location = selection.location == 0 ? 0 : min(selection.location - 1, textLength - 1)
-        return NSRange(location: location, length: 1)
+        let textLength = editorTextView.attributedText.length
+        return NSRange(location: selection.location, length: min(selection.length, textLength - selection.location))
     }
 
     func selectionHasFontTrait(_ trait: UIFontDescriptor.SymbolicTraits) -> Bool {
