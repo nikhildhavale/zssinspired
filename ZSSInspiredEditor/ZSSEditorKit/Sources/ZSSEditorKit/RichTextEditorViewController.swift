@@ -2054,11 +2054,12 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
     public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if isMentionSuggestionsLoading { return 1 }
+        guard section < mentionSections.count else { return 0 }
         return mentionSections[section].suggestions.count
     }
 
     public func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard !isMentionSuggestionsLoading else { return nil }
+        guard !isMentionSuggestionsLoading, section < mentionSections.count else { return nil }
         guard let title = mentionSections[section].title else { return nil }
 
         let headerView = UIView()
@@ -2109,7 +2110,8 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
         cell.preservesSuperviewLayoutMargins = false
         cell.layoutMargins = .zero
         cell.selectionStyle = .default
-        cell.separatorInset = mentionSections[indexPath.section].suggestions.count == 1
+        let sectionSuggestionCount = indexPath.section < mentionSections.count ? mentionSections[indexPath.section].suggestions.count : 0
+        cell.separatorInset = sectionSuggestionCount == 1
             ? UIEdgeInsets(top: 0, left: tableView.bounds.width, bottom: 0, right: 0)
             : .zero
         loadMentionImage(for: suggestion, at: indexPath)
