@@ -34,6 +34,9 @@ public final class RichTextEditorViewController: UIViewController {
     public var onMentionInserted: ((any MentionItem) -> Void)?
     public var onMentionRemoved: ((any MentionItem) -> Void)?
     public private(set) var insertedMentions: [any MentionItem] = []
+    public var onHashtagInserted: ((any HashtagItem) -> Void)?
+    public var onHashtagRemoved: ((any HashtagItem) -> Void)?
+    public private(set) var insertedHashtags: [any HashtagItem] = []
 
     /// The trigger character ("@" or "#") of the mention session currently in
     /// progress, or nil when no session is active. Closure-based hosts can read
@@ -144,12 +147,36 @@ public final class RichTextEditorViewController: UIViewController {
     private var placeholderLeadingConstraint: NSLayoutConstraint?
     private var toolbarHeightConstraint: NSLayoutConstraint?
 
-    private typealias MentionSection = (title: String?, suggestions: [any MentionItem])
+    /// A row in the mention/hashtag suggestion list — either a person
+    /// (`MentionItem`) or a hashtag (`HashtagItem`). The two public
+    /// protocols stay separate (hosts shouldn't have to reconcile
+    /// avatar/self-mention concepts with hashtag colors); this enum is how
+    /// the shared list/table plumbing stores either kind uniformly.
+    enum MentionSuggestionEntry {
+        case mention(any MentionItem)
+        case hashtag(any HashtagItem)
 
-    private var filteredMentions: [any MentionItem] = []
+        var displayName: String {
+            switch self {
+            case .mention(let item): return item.mentionDisplayName
+            case .hashtag(let item): return item.hashtagDisplayName
+            }
+        }
+
+        var identifier: String {
+            switch self {
+            case .mention(let item): return item.mentionIdentifier
+            case .hashtag(let item): return item.hashtagIdentifier
+            }
+        }
+    }
+
+    private typealias MentionSection = (title: String?, suggestions: [MentionSuggestionEntry])
+
+    private var filteredMentions: [MentionSuggestionEntry] = []
     private var mentionSections: [MentionSection] = []
     private var mentionQueryRange: NSRange?
-    private var remoteMentionSuggestions: [any MentionItem] = []
+    private var remoteMentionSuggestions: [MentionSuggestionEntry] = []
     private var isMentionSuggestionsLoading = false
     private var lastMentionQuery: String?
     private var lastMentionTrigger: MentionTrigger?
@@ -199,8 +226,18 @@ public final class RichTextEditorViewController: UIViewController {
     }
 
     public func updateMentionSuggestions(_ items: [any MentionItem]) {
-        guard onMentionQueryChanged != nil, mentionQueryRange != nil else { return }
-        remoteMentionSuggestions = uniqueMentionSuggestions(items)
+        guard onMentionQueryChanged != nil, mentionQueryRange != nil, activeMentionTrigger != .hash else { return }
+        remoteMentionSuggestions = uniqueMentionSuggestions(items).map { MentionSuggestionEntry.mention($0) }
+        isMentionSuggestionsLoading = false
+        filteredMentions = remoteMentionSuggestions
+        mentionSections = makeMentionSections(from: filteredMentions)
+        showMentionSuggestionsIfNeeded()
+    }
+
+    /// Same contract as `updateMentionSuggestions(_:)`, for "#" hashtag results.
+    public func updateHashtagSuggestions(_ items: [any HashtagItem]) {
+        guard onMentionQueryChanged != nil, mentionQueryRange != nil, activeMentionTrigger == .hash else { return }
+        remoteMentionSuggestions = uniqueHashtagSuggestions(items).map { MentionSuggestionEntry.hashtag($0) }
         isMentionSuggestionsLoading = false
         filteredMentions = remoteMentionSuggestions
         mentionSections = makeMentionSections(from: filteredMentions)
@@ -224,6 +261,8 @@ public final class RichTextEditorViewController: UIViewController {
             onMentionQueryChanged = nil
             onMentionInserted = nil
             onMentionRemoved = nil
+            onHashtagInserted = nil
+            onHashtagRemoved = nil
             return
         }
 
@@ -238,18 +277,25 @@ public final class RichTextEditorViewController: UIViewController {
                 return
             }
 
-            self.setMentionSuggestionsLoading(true)
-            let deliver: ([any MentionItem]) -> Void = { [weak self] items in
-                DispatchQueue.main.async {
-                    guard let self, generation == self.mentionProviderQueryGeneration else { return }
-                    self.updateMentionSuggestions(items)
-                }
-            }
+            // No loading placeholder here by design: showing one only to hide
+            // it again the moment a query resolves to zero results is a flash
+            // with nothing to show for it. The list simply updates (or stays
+            // hidden) once results arrive.
             switch self.activeMentionTrigger ?? .at {
             case .at:
-                self.mentionProvider?.fetchMentionSuggestions(for: query, completion: deliver)
+                self.mentionProvider?.fetchMentionSuggestions(for: query) { [weak self] items in
+                    DispatchQueue.main.async {
+                        guard let self, generation == self.mentionProviderQueryGeneration else { return }
+                        self.updateMentionSuggestions(items)
+                    }
+                }
             case .hash:
-                self.mentionProvider?.fetchHashtagSuggestions(for: query, completion: deliver)
+                self.mentionProvider?.fetchHashtagSuggestions(for: query) { [weak self] items in
+                    DispatchQueue.main.async {
+                        guard let self, generation == self.mentionProviderQueryGeneration else { return }
+                        self.updateHashtagSuggestions(items)
+                    }
+                }
             }
         }
         onMentionInserted = { [weak self] mention in
@@ -257,6 +303,12 @@ public final class RichTextEditorViewController: UIViewController {
         }
         onMentionRemoved = { [weak self] mention in
             self?.mentionProvider?.mentionRemoved(mention)
+        }
+        onHashtagInserted = { [weak self] hashtag in
+            self?.mentionProvider?.hashtagInserted(hashtag)
+        }
+        onHashtagRemoved = { [weak self] hashtag in
+            self?.mentionProvider?.hashtagRemoved(hashtag)
         }
     }
 }
@@ -1564,6 +1616,8 @@ private extension RichTextEditorViewController {
             var effectiveRange = NSRange(location: 0, length: 0)
             if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
                 html += exportedMentionHTML(for: mention, trigger: mentionTrigger(in: attributedText, at: index))
+            } else if let hashtag = attributedText.attribute(.zssHashtagItem, at: index, effectiveRange: &effectiveRange) as? any HashtagItem {
+                html += exportedHashtagHTML(for: hashtag)
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 html += ""
             } else {
@@ -1586,6 +1640,12 @@ private extension RichTextEditorViewController {
         }
     }
 
+    func exportedHashtagHTML(for hashtag: any HashtagItem) -> String {
+        let escapedName = escapedHTMLText(hashtag.hashtagDisplayName)
+        let escapedIdentifier = escapedHTMLAttribute(hashtag.hashtagIdentifier)
+        return "<a class=\"hashtag\" data-hashtag-id=\"\(escapedIdentifier)\">\(MentionTrigger.hash.symbol)\(escapedName)</a>"
+    }
+
     func escapedHTMLText(_ text: String) -> String {
         text
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -1603,7 +1663,7 @@ private extension RichTextEditorViewController {
         editorTextView.attributedText = attributedString(fromHTML: htmlTextView.text)
         editorTextView.typingAttributes = defaultTypingAttributes()
         updatePlaceholder()
-        refreshInsertedMentions()
+        refreshInsertedMentionsAndHashtags()
     }
 
     func attributedString(fromHTML html: String) -> NSAttributedString {
@@ -1634,7 +1694,7 @@ private extension RichTextEditorViewController {
         orderedListCounter = 1
         updatePlaceholder()
         updateToolbarSelectionState()
-        refreshInsertedMentions()
+        refreshInsertedMentionsAndHashtags()
     }
 
     func linkTypingAttributes(url: URL) -> [NSAttributedString.Key: Any] {
@@ -1672,9 +1732,16 @@ private extension RichTextEditorViewController {
         }
 
         let lowercaseQuery = query.lowercased()
-        filteredMentions = allMentionSuggestions()
-            .filter { lowercaseQuery.isEmpty || $0.mentionDisplayName.lowercased().hasPrefix(lowercaseQuery) }
-            .sorted { $0.mentionDisplayName.localizedCaseInsensitiveCompare($1.mentionDisplayName) == .orderedAscending }
+        let localEntries: [MentionSuggestionEntry]
+        switch trigger {
+        case .at:
+            localEntries = allMentionSuggestions().map { MentionSuggestionEntry.mention($0) }
+        case .hash:
+            localEntries = allHashtagSuggestions().map { MentionSuggestionEntry.hashtag($0) }
+        }
+        filteredMentions = localEntries
+            .filter { lowercaseQuery.isEmpty || $0.displayName.lowercased().hasPrefix(lowercaseQuery) }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         mentionSections = makeMentionSections(from: filteredMentions)
         showMentionSuggestionsIfNeeded()
     }
@@ -1690,17 +1757,28 @@ private extension RichTextEditorViewController {
         }
     }
 
+    func allHashtagSuggestions() -> [any HashtagItem] {
+        uniqueHashtagSuggestions(mentionConfiguration.hashtagSuggestions)
+    }
+
+    func uniqueHashtagSuggestions(_ suggestions: [any HashtagItem]) -> [any HashtagItem] {
+        var seenIdentifiers = Set<String>()
+        return suggestions.filter {
+            seenIdentifiers.insert($0.hashtagIdentifier).inserted
+        }
+    }
+
     func isSelfMention(_ suggestion: any MentionItem) -> Bool {
         suggestion.isSelfMention
     }
 
-    private func makeMentionSections(from suggestions: [any MentionItem]) -> [MentionSection] {
+    private func makeMentionSections(from suggestions: [MentionSuggestionEntry]) -> [MentionSection] {
         guard mentionConfiguration.showsAlphabeticalSections else {
             return [(title: nil, suggestions: suggestions)]
         }
 
         let grouped = Dictionary(grouping: suggestions) { suggestion in
-            guard let firstCharacter = suggestion.mentionDisplayName.first, firstCharacter.isLetter else { return "#" }
+            guard let firstCharacter = suggestion.displayName.first, firstCharacter.isLetter else { return "#" }
             return String(firstCharacter).uppercased()
         }
         return grouped.keys.sorted().map { title in
@@ -1812,7 +1890,7 @@ private extension RichTextEditorViewController {
         lastMentionTrigger = nil
     }
 
-    func mentionSuggestion(at indexPath: IndexPath) -> (any MentionItem)? {
+    func mentionSuggestion(at indexPath: IndexPath) -> MentionSuggestionEntry? {
         guard indexPath.section < mentionSections.count else { return nil }
         let suggestions = mentionSections[indexPath.section].suggestions
         guard indexPath.row < suggestions.count else { return nil }
@@ -1869,7 +1947,7 @@ private extension RichTextEditorViewController {
             guard let self else { return }
             guard let (data, _) = try? await URLSession.shared.data(from: url), let image = UIImage(data: data) else { return }
             mentionImageCache.setObject(image, forKey: url as NSURL)
-            guard mentionSuggestion(at: indexPath)?.mentionIdentifier == suggestion.mentionIdentifier else { return }
+            guard mentionSuggestion(at: indexPath)?.identifier == suggestion.mentionIdentifier else { return }
             mentionTableView.reloadRows(at: [indexPath], with: .none)
         }
     }
@@ -1931,21 +2009,59 @@ private extension RichTextEditorViewController {
         }
     }
 
-    func mentionPillAttachment(for suggestion: any MentionItem, trigger: MentionTrigger) -> NSTextAttachment {
-        let isSelf = isSelfMention(suggestion)
-        let foregroundColor = isSelf ? mentionConfiguration.mentionForegroundColor : mentionConfiguration.otherMentionForegroundColor
-        let backgroundColor = isSelf ? mentionConfiguration.mentionBackgroundColor : mentionConfiguration.otherMentionBackgroundColor
+    /// Renders `text` as a rounded pill of `foregroundColor`-on-`backgroundColor`,
+    /// sized to fit at the editor's current typing font. Shared by the "@"
+    /// mention and "#" hashtag pills — neither shows its trigger symbol as
+    /// visible text, only the bare name.
+    func pillAttachment(text: String, foregroundColor: UIColor, backgroundColor: UIColor, cornerRadius: CGFloat) -> NSTextAttachment {
         let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
         let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
         let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
-        let text = (trigger.pillPrefix + suggestion.mentionDisplayName) as NSString
+        let nsText = text as NSString
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foregroundColor]
-        let textSize = text.size(withAttributes: attributes)
+        let textSize = nsText.size(withAttributes: attributes)
         let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { _ in
             backgroundColor.setFill()
-            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: max(0, mentionConfiguration.mentionCornerRadius)).fill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: max(0, cornerRadius)).fill()
+            nsText.draw(at: CGPoint(x: horizontalPadding, y: verticalPadding), withAttributes: attributes)
+        }
+
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        attachment.bounds = CGRect(x: 0, y: font.descender - verticalPadding, width: size.width, height: size.height)
+        return attachment
+    }
+
+    func mentionPillAttachment(for suggestion: any MentionItem) -> NSTextAttachment {
+        let isSelf = isSelfMention(suggestion)
+        return pillAttachment(
+            text: suggestion.mentionDisplayName,
+            foregroundColor: isSelf ? mentionConfiguration.mentionForegroundColor : mentionConfiguration.otherMentionForegroundColor,
+            backgroundColor: isSelf ? mentionConfiguration.mentionBackgroundColor : mentionConfiguration.otherMentionBackgroundColor,
+            cornerRadius: mentionConfiguration.mentionCornerRadius
+        )
+    }
+
+    /// An outlined pill (stroke + text in `hashtag.hashtagColor`, no fill) so
+    /// the inserted pill matches the suggestion row's outlined-capsule look.
+    func hashtagPillAttachment(for hashtag: any HashtagItem) -> NSTextAttachment {
+        let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
+        let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
+        let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
+        let text = hashtag.hashtagDisplayName as NSString
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: hashtag.hashtagColor]
+        let textSize = text.size(withAttributes: attributes)
+        let strokeWidth: CGFloat = 1
+        let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            let strokeRect = CGRect(origin: .zero, size: size).insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
+            let path = UIBezierPath(roundedRect: strokeRect, cornerRadius: max(0, mentionConfiguration.mentionCornerRadius))
+            path.lineWidth = strokeWidth
+            hashtag.hashtagColor.setStroke()
+            path.stroke()
             text.draw(at: CGPoint(x: horizontalPadding, y: verticalPadding), withAttributes: attributes)
         }
 
@@ -1955,7 +2071,54 @@ private extension RichTextEditorViewController {
         return attachment
     }
 
-    func insertMention(_ suggestion: any MentionItem) {
+    /// Composes the "#" badge + outlined colored pill shown for a hashtag
+    /// suggestion row as a single image, so the two parts can be
+    /// independently shaped and spaced rather than shoehorned into
+    /// `UIListContentConfiguration`'s single image + text pairing.
+    func hashtagRowImage(for hashtag: any HashtagItem) -> UIImage {
+        let badgeSize = max(1, mentionConfiguration.hashtagBadgeSize)
+        let badgeFont = UIFont.systemFont(ofSize: badgeSize * 0.5, weight: .semibold)
+        let pillFont = UIFont.preferredFont(forTextStyle: .body)
+        let horizontalPadding: CGFloat = 14
+        let verticalPadding: CGFloat = 7
+        let gap: CGFloat = 10
+        let strokeWidth: CGFloat = 1.5
+
+        let pillText = hashtag.hashtagDisplayName as NSString
+        let pillAttributes: [NSAttributedString.Key: Any] = [.font: pillFont, .foregroundColor: hashtag.hashtagColor]
+        let pillTextSize = pillText.size(withAttributes: pillAttributes)
+        let pillSize = CGSize(
+            width: ceil(pillTextSize.width + horizontalPadding * 2),
+            height: ceil(pillTextSize.height + verticalPadding * 2)
+        )
+
+        let rowHeight = max(badgeSize, pillSize.height)
+        let size = CGSize(width: badgeSize + gap + pillSize.width, height: rowHeight)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            let badgeRect = CGRect(x: 0, y: (rowHeight - badgeSize) / 2, width: badgeSize, height: badgeSize)
+            mentionConfiguration.hashtagBadgeBackgroundColor.setFill()
+            UIBezierPath(roundedRect: badgeRect, cornerRadius: badgeSize * 0.3).fill()
+
+            let badgeText = MentionTrigger.hash.symbol as NSString
+            let badgeAttributes: [NSAttributedString.Key: Any] = [.font: badgeFont, .foregroundColor: mentionConfiguration.hashtagBadgeForegroundColor]
+            let badgeTextSize = badgeText.size(withAttributes: badgeAttributes)
+            badgeText.draw(
+                at: CGPoint(x: badgeRect.midX - badgeTextSize.width / 2, y: badgeRect.midY - badgeTextSize.height / 2),
+                withAttributes: badgeAttributes
+            )
+
+            let pillRect = CGRect(x: badgeSize + gap, y: (rowHeight - pillSize.height) / 2, width: pillSize.width, height: pillSize.height)
+            let strokeRect = pillRect.insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
+            let pillPath = UIBezierPath(roundedRect: strokeRect, cornerRadius: strokeRect.height / 2)
+            pillPath.lineWidth = strokeWidth
+            hashtag.hashtagColor.setStroke()
+            pillPath.stroke()
+            pillText.draw(at: CGPoint(x: pillRect.minX + horizontalPadding, y: pillRect.minY + verticalPadding), withAttributes: pillAttributes)
+        }
+    }
+
+    func insertMention(_ entry: MentionSuggestionEntry) {
         guard let queryRange = mentionQueryRange else { return }
         let trigger = activeMentionTrigger ?? .at
 
@@ -1963,8 +2126,21 @@ private extension RichTextEditorViewController {
         trailingAttributes.removeValue(forKey: .backgroundColor)
         trailingAttributes[.foregroundColor] = UIColor.label
 
-        let replacement = NSMutableAttributedString(attachment: mentionPillAttachment(for: suggestion, trigger: trigger))
-        replacement.addAttribute(.zssMentionItem, value: suggestion, range: NSRange(location: 0, length: replacement.length))
+        let attachment: NSTextAttachment
+        switch entry {
+        case .mention(let item):
+            attachment = mentionPillAttachment(for: item)
+        case .hashtag(let item):
+            attachment = hashtagPillAttachment(for: item)
+        }
+
+        let replacement = NSMutableAttributedString(attachment: attachment)
+        switch entry {
+        case .mention(let item):
+            replacement.addAttribute(.zssMentionItem, value: item, range: NSRange(location: 0, length: replacement.length))
+        case .hashtag(let item):
+            replacement.addAttribute(.zssHashtagItem, value: item, range: NSRange(location: 0, length: replacement.length))
+        }
         replacement.addAttribute(.zssMentionTrigger, value: trigger.symbol, range: NSRange(location: 0, length: replacement.length))
         replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
 
@@ -1976,22 +2152,41 @@ private extension RichTextEditorViewController {
         endMentionSession()
         updatePlaceholder()
         updateToolbarSelectionState()
-        refreshInsertedMentions()
-        onMentionInserted?(suggestion)
+        refreshInsertedMentionsAndHashtags()
+        switch entry {
+        case .mention(let item):
+            onMentionInserted?(item)
+        case .hashtag(let item):
+            onHashtagInserted?(item)
+        }
     }
 
-    func refreshInsertedMentions() {
+    func refreshInsertedMentionsAndHashtags() {
         let previousMentions = insertedMentions
         let currentMentions = currentMentionItems()
         insertedMentions = currentMentions
 
-        var currentCounts = Dictionary(currentMentions.map { ($0.mentionIdentifier, 1) }, uniquingKeysWith: +)
+        var currentMentionCounts = Dictionary(currentMentions.map { ($0.mentionIdentifier, 1) }, uniquingKeysWith: +)
         for mention in previousMentions {
-            let remainingCount = currentCounts[mention.mentionIdentifier] ?? 0
+            let remainingCount = currentMentionCounts[mention.mentionIdentifier] ?? 0
             if remainingCount > 0 {
-                currentCounts[mention.mentionIdentifier] = remainingCount - 1
+                currentMentionCounts[mention.mentionIdentifier] = remainingCount - 1
             } else {
                 onMentionRemoved?(mention)
+            }
+        }
+
+        let previousHashtags = insertedHashtags
+        let currentHashtags = currentHashtagItems()
+        insertedHashtags = currentHashtags
+
+        var currentHashtagCounts = Dictionary(currentHashtags.map { ($0.hashtagIdentifier, 1) }, uniquingKeysWith: +)
+        for hashtag in previousHashtags {
+            let remainingCount = currentHashtagCounts[hashtag.hashtagIdentifier] ?? 0
+            if remainingCount > 0 {
+                currentHashtagCounts[hashtag.hashtagIdentifier] = remainingCount - 1
+            } else {
+                onHashtagRemoved?(hashtag)
             }
         }
     }
@@ -2004,6 +2199,16 @@ private extension RichTextEditorViewController {
             mentions.append(mention)
         }
         return mentions
+    }
+
+    func currentHashtagItems() -> [any HashtagItem] {
+        let attributedText = editorTextView.attributedText ?? NSAttributedString()
+        var hashtags: [any HashtagItem] = []
+        attributedText.enumerateAttribute(.zssHashtagItem, in: NSRange(location: 0, length: attributedText.length)) { value, _, _ in
+            guard let hashtag = value as? any HashtagItem else { return }
+            hashtags.append(hashtag)
+        }
+        return hashtags
     }
 }
 
@@ -2033,7 +2238,7 @@ extension RichTextEditorViewController: UITextViewDelegate {
             updatePlaceholder()
             updateToolbarSelectionState()
             updateMentionSuggestions()
-            refreshInsertedMentions()
+            refreshInsertedMentionsAndHashtags()
         }
     }
 
@@ -2123,7 +2328,26 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
             return cell
         }
 
-        guard let suggestion = mentionSuggestion(at: indexPath) else { return cell }
+        guard let entry = mentionSuggestion(at: indexPath) else { return cell }
+        switch entry {
+        case .mention(let suggestion):
+            configureMentionCell(cell, for: suggestion, at: indexPath)
+        case .hashtag(let hashtag):
+            configureHashtagCell(cell, for: hashtag)
+        }
+
+        cell.backgroundColor = mentionConfiguration.suggestionBackgroundColor
+        cell.preservesSuperviewLayoutMargins = false
+        cell.layoutMargins = .zero
+        cell.selectionStyle = .default
+        let sectionSuggestionCount = indexPath.section < mentionSections.count ? mentionSections[indexPath.section].suggestions.count : 0
+        cell.separatorInset = sectionSuggestionCount == 1
+            ? UIEdgeInsets(top: 0, left: tableView.bounds.width, bottom: 0, right: 0)
+            : .zero
+        return cell
+    }
+
+    private func configureMentionCell(_ cell: UITableViewCell, for suggestion: any MentionItem, at indexPath: IndexPath) {
         var configuration = cell.defaultContentConfiguration()
         configuration.text = suggestion.mentionDisplayName
         configuration.textProperties.color = mentionConfiguration.suggestionForegroundColor
@@ -2136,27 +2360,36 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
         configuration.imageProperties.maximumSize = CGSize(width: imageSize, height: imageSize)
         configuration.imageProperties.cornerRadius = imageCornerRadius()
         cell.contentConfiguration = configuration
-        cell.backgroundColor = mentionConfiguration.suggestionBackgroundColor
-        cell.preservesSuperviewLayoutMargins = false
-        cell.layoutMargins = .zero
-        cell.selectionStyle = .default
-        let sectionSuggestionCount = indexPath.section < mentionSections.count ? mentionSections[indexPath.section].suggestions.count : 0
-        cell.separatorInset = sectionSuggestionCount == 1
-            ? UIEdgeInsets(top: 0, left: tableView.bounds.width, bottom: 0, right: 0)
-            : .zero
         loadMentionImage(for: suggestion, at: indexPath)
-        return cell
+    }
+
+    /// Hashtag rows don't use the avatar + name layout: the "#" badge and
+    /// colored outlined pill are composed into a single image (via
+    /// `hashtagRowImage(for:)`) so they can be independently shaped and
+    /// spaced, rather than shoehorned into `UIListContentConfiguration`'s
+    /// image + text pairing.
+    private func configureHashtagCell(_ cell: UITableViewCell, for hashtag: any HashtagItem) {
+        var configuration = cell.defaultContentConfiguration()
+        configuration.text = nil
+        configuration.secondaryText = nil
+        let rowImage = hashtagRowImage(for: hashtag)
+        configuration.image = rowImage
+        configuration.imageProperties.maximumSize = rowImage.size
+        configuration.imageProperties.cornerRadius = 0
+        cell.contentConfiguration = configuration
+        cell.accessibilityLabel = "\(MentionTrigger.hash.symbol)\(hashtag.hashtagDisplayName)"
     }
 
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         guard !isMentionSuggestionsLoading else { return }
-        guard let suggestion = mentionSuggestion(at: indexPath) else { return }
-        insertMention(suggestion)
+        guard let entry = mentionSuggestion(at: indexPath) else { return }
+        insertMention(entry)
     }
 }
 
 extension NSAttributedString.Key {
     static let zssMentionItem = NSAttributedString.Key("com.zssinspirededitor.mentionItem")
+    static let zssHashtagItem = NSAttributedString.Key("com.zssinspirededitor.hashtagItem")
     static let zssMentionTrigger = NSAttributedString.Key("com.zssinspirededitor.mentionTrigger")
 }
 

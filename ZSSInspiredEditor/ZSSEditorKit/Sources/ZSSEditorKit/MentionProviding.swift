@@ -27,9 +27,12 @@ public protocol MentionSuggestionsProviding: AnyObject {
     func fetchMentionSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void)
 
     /// Same contract as `fetchMentionSuggestions(for:completion:)`, but for the
-    /// text following "#". Implement this to supply hashtag/channel suggestions;
-    /// the default implementation returns no results. Optional.
-    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void)
+    /// text following "#". Hashtags are a distinct `HashtagItem` type (color
+    /// instead of avatar/self-mention) so they render as a badge + colored
+    /// pill instead of an avatar + name row. Implement this to supply
+    /// hashtag/channel suggestions; the default implementation returns no
+    /// results. Optional.
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.HashtagItem]) -> Void)
 
     /// Called when the mention session ends without a selection
     /// (escape key, caret moved away, "@" or "#" deleted). Optional.
@@ -40,13 +43,21 @@ public protocol MentionSuggestionsProviding: AnyObject {
 
     /// Called when a previously inserted mention is deleted from the text. Optional.
     func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem)
+
+    /// Called when the user picks a hashtag suggestion and it is inserted into the text. Optional.
+    func hashtagInserted(_ hashtag: any RichTextEditorViewController.HashtagItem)
+
+    /// Called when a previously inserted hashtag is deleted from the text. Optional.
+    func hashtagRemoved(_ hashtag: any RichTextEditorViewController.HashtagItem)
 }
 
 public extension MentionSuggestionsProviding {
-    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.HashtagItem]) -> Void) {
         completion([])
     }
     func mentionSessionDidEnd() {}
     func mentionInserted(_ mention: any RichTextEditorViewController.MentionItem) {}
     func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem) {}
+    func hashtagInserted(_ hashtag: any RichTextEditorViewController.HashtagItem) {}
+    func hashtagRemoved(_ hashtag: any RichTextEditorViewController.HashtagItem) {}
 }

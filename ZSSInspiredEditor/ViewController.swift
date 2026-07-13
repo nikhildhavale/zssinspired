@@ -23,12 +23,10 @@ final class ViewController: UIViewController {
         RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-108", name: "Sam Rivera", image: .initials("SR"))
     ]
 
-    private let channels: [RichTextEditorViewController.MentionSuggestion] = [
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-1", name: "general", image: .initials("G")),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-2", name: "announcements", image: .initials("A")),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-3", name: "design", image: .initials("D")),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-4", name: "engineering", image: .initials("E")),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "channel-5", name: "random", image: .initials("R"))
+    private let hashtags: [RichTextEditorViewController.HashtagSuggestion] = [
+        RichTextEditorViewController.HashtagSuggestion(name: "helpful", color: .systemYellow),
+        RichTextEditorViewController.HashtagSuggestion(name: "highpriority", color: .systemOrange),
+        RichTextEditorViewController.HashtagSuggestion(name: "Honesty", color: .label)
     ]
 
     override func viewDidLoad() {
@@ -81,6 +79,13 @@ final class ViewController: UIViewController {
         print("export html: \(editor.html)")
     }
 
+    private func logHashtagState(event: String) {
+        let ids = editor.insertedHashtags.map(\.hashtagIdentifier).joined(separator: ", ")
+        print("hashtag \(event)")
+        print("current hashtag ids: [\(ids)]")
+        print("export html: \(editor.html)")
+    }
+
     private func showMarkdownView(_ markdownText: String) {
         let alert = UIAlertController(title: "Markdown", message: markdownText.isEmpty ? "No content" : markdownText, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
@@ -105,11 +110,11 @@ extension ViewController: MentionSuggestionsProviding {
         }
     }
 
-    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.MentionItem]) -> Void) {
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { [channels] in
-            let matches = channels
-                .filter { query.isEmpty || $0.mentionDisplayName.localizedCaseInsensitiveContains(query) }
-                .sorted { $0.mentionDisplayName.localizedCaseInsensitiveCompare($1.mentionDisplayName) == .orderedAscending }
+    func fetchHashtagSuggestions(for query: String, completion: @escaping ([any RichTextEditorViewController.HashtagItem]) -> Void) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { [hashtags] in
+            let matches = hashtags
+                .filter { query.isEmpty || $0.hashtagDisplayName.localizedCaseInsensitiveContains(query) }
+                .sorted { $0.hashtagDisplayName.localizedCaseInsensitiveCompare($1.hashtagDisplayName) == .orderedAscending }
             print("hashtag query '\(query)' returned \(matches.count) result(s)")
             completion(matches)
         }
@@ -125,5 +130,13 @@ extension ViewController: MentionSuggestionsProviding {
 
     func mentionRemoved(_ mention: any RichTextEditorViewController.MentionItem) {
         logMentionState(event: "removed \(mention.mentionDisplayName) [\(mention.mentionIdentifier)]")
+    }
+
+    func hashtagInserted(_ hashtag: any RichTextEditorViewController.HashtagItem) {
+        logHashtagState(event: "inserted \(hashtag.hashtagDisplayName) [\(hashtag.hashtagIdentifier)]")
+    }
+
+    func hashtagRemoved(_ hashtag: any RichTextEditorViewController.HashtagItem) {
+        logHashtagState(event: "removed \(hashtag.hashtagDisplayName) [\(hashtag.hashtagIdentifier)]")
     }
 }

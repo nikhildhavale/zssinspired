@@ -20,17 +20,15 @@ extension RichTextEditorViewController {
         case custom((_ mention: any MentionItem, _ escapedName: String, _ escapedIdentifier: String) -> String)
     }
 
-    /// The character that starts a mention session. "@" mentions render as a
-    /// bare name pill; "#" mentions keep the "#" visible in the editor.
+    /// The character that starts a mention session. Both "@" mentions and
+    /// "#" hashtags render as a bare-name pill in the editor — neither
+    /// includes the trigger symbol as visible text; `symbol` is used for
+    /// export (HTML/markdown) and to tell sessions apart, not for display.
     public enum MentionTrigger: Character, CaseIterable {
         case at = "@"
         case hash = "#"
 
         public var symbol: String { String(rawValue) }
-
-        var pillPrefix: String {
-            self == .hash ? symbol : ""
-        }
     }
 
     /// `mentionDisplayName`/`mentionImage` are named to avoid colliding with
@@ -58,10 +56,36 @@ extension RichTextEditorViewController {
         }
     }
 
+    /// A "#" hashtag suggestion. Deliberately separate from `MentionItem`:
+    /// hashtags have no avatar or self/other distinction, render as a
+    /// colored badge + pill row instead of an avatar + name row, and carry
+    /// their own display color instead of using `MentionConfiguration`'s
+    /// foreground/background colors.
+    public protocol HashtagItem {
+        var hashtagIdentifier: String { get }
+        var hashtagDisplayName: String { get }
+        var hashtagColor: UIColor { get }
+    }
+
+    public struct HashtagSuggestion: HashtagItem {
+        public var hashtagIdentifier: String
+        public var hashtagDisplayName: String
+        public var hashtagColor: UIColor
+
+        public init(hashtagIdentifier: String? = nil, name: String, color: UIColor = .label) {
+            self.hashtagIdentifier = hashtagIdentifier ?? name
+            self.hashtagDisplayName = name
+            self.hashtagColor = color
+        }
+    }
+
     public struct MentionConfiguration {
         /// Characters that open a mention session while typing.
         public var triggers: [MentionTrigger]
         public var suggestions: [any MentionItem]
+        /// Local (non-provider) "#" hashtag suggestions, mirroring
+        /// `suggestions` for "@" mentions.
+        public var hashtagSuggestions: [any HashtagItem]
         public var selfMentionLabel: String
         public var mentionForegroundColor: UIColor
         public var mentionBackgroundColor: UIColor
@@ -85,6 +109,10 @@ extension RichTextEditorViewController {
         public var cornerRadius: CGFloat
         public var exportFormat: MentionExportFormat
         public var loadingText: String
+        /// Side length of the "#" badge shown to the left of each hashtag pill.
+        public var hashtagBadgeSize: CGFloat
+        public var hashtagBadgeBackgroundColor: UIColor
+        public var hashtagBadgeForegroundColor: UIColor
 
         public init(
             triggers: [MentionTrigger] = [.at, .hash],
@@ -96,6 +124,7 @@ extension RichTextEditorViewController {
                 MentionSuggestion(name: "Emma"),
                 MentionSuggestion(name: "Nikhil", isSelfMention: true)
             ],
+            hashtagSuggestions: [any HashtagItem] = [],
             selfMentionLabel: String = "You",
             mentionForegroundColor: UIColor = .white,
             mentionBackgroundColor: UIColor = .systemBlue,
@@ -118,10 +147,14 @@ extension RichTextEditorViewController {
             listWidth: CGFloat = 280,
             cornerRadius: CGFloat = 10,
             exportFormat: MentionExportFormat = .anchor,
-            loadingText: String = "Loading..."
+            loadingText: String = "Loading...",
+            hashtagBadgeSize: CGFloat = 32,
+            hashtagBadgeBackgroundColor: UIColor = .systemGray5,
+            hashtagBadgeForegroundColor: UIColor = .secondaryLabel
         ) {
             self.triggers = triggers
             self.suggestions = suggestions
+            self.hashtagSuggestions = hashtagSuggestions
             self.selfMentionLabel = selfMentionLabel
             self.mentionForegroundColor = mentionForegroundColor
             self.mentionBackgroundColor = mentionBackgroundColor
@@ -145,6 +178,9 @@ extension RichTextEditorViewController {
             self.cornerRadius = cornerRadius
             self.exportFormat = exportFormat
             self.loadingText = loadingText
+            self.hashtagBadgeSize = hashtagBadgeSize
+            self.hashtagBadgeBackgroundColor = hashtagBadgeBackgroundColor
+            self.hashtagBadgeForegroundColor = hashtagBadgeForegroundColor
         }
     }
 
