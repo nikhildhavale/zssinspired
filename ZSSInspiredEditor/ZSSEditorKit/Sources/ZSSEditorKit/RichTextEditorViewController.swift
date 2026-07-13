@@ -1822,14 +1822,44 @@ private extension RichTextEditorViewController {
     func mentionImage(for suggestion: any MentionItem) -> UIImage {
         switch suggestion.mentionImage {
         case .uiImage(let image):
-            return image
+            return avatarImage(from: image)
         case .initials(let initials):
             return initialsImage(initials, colorSeed: suggestion.mentionDisplayName)
         case .url(let url):
-            return mentionImageCache.object(forKey: url as NSURL) ?? initialsImage(initials(for: suggestion.mentionDisplayName), colorSeed: suggestion.mentionDisplayName)
+            guard let cachedImage = mentionImageCache.object(forKey: url as NSURL) else {
+                return initialsImage(initials(for: suggestion.mentionDisplayName), colorSeed: suggestion.mentionDisplayName)
+            }
+            return avatarImage(from: cachedImage)
         case nil:
             return initialsImage(initials(for: suggestion.mentionDisplayName), colorSeed: suggestion.mentionDisplayName)
         }
+    }
+
+    /// Renders `sourceImage` into the same fixed `imageSize` × `imageSize`
+    /// canvas `initialsImage` uses, aspect-filled and clipped to
+    /// `mentionConfiguration.imageShape`, so a real photo and an initials
+    /// fallback are always the same size and shape regardless of the
+    /// source image's own dimensions/aspect ratio.
+    func avatarImage(from sourceImage: UIImage) -> UIImage {
+        let imageSize = max(1, mentionConfiguration.imageSize)
+        let size = CGSize(width: imageSize, height: imageSize)
+        let bounds = CGRect(origin: .zero, size: size)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { context in
+            avatarPath(in: bounds).addClip()
+            sourceImage.draw(in: aspectFillRect(for: sourceImage.size, in: bounds))
+        }
+    }
+
+    /// The rect to draw a `sourceSize` image in so it fills `bounds` while
+    /// preserving its aspect ratio (cropping any overflow), centered.
+    func aspectFillRect(for sourceSize: CGSize, in bounds: CGRect) -> CGRect {
+        guard sourceSize.width > 0, sourceSize.height > 0 else { return bounds }
+
+        let scale = max(bounds.width / sourceSize.width, bounds.height / sourceSize.height)
+        let scaledSize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+        let origin = CGPoint(x: bounds.midX - scaledSize.width / 2, y: bounds.midY - scaledSize.height / 2)
+        return CGRect(origin: origin, size: scaledSize)
     }
 
     func loadMentionImage(for suggestion: any MentionItem, at indexPath: IndexPath) {
