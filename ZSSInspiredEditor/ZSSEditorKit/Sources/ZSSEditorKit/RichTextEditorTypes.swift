@@ -211,6 +211,13 @@ extension RichTextEditorViewController {
         public var plusButtonColor: UIColor
         public var foregroundColors: [ToolbarColor]
         public var backgroundColors: [ToolbarColor]
+        /// Height of the toolbar row. Defaults to a roomy 58pt; set something
+        /// smaller (e.g. 42) to match a more compact design spec.
+        public var toolbarHeight: CGFloat
+        /// Width and height of each toolbar button, including the plus button.
+        /// Defaults to 38pt; set something smaller (e.g. 30) to match a more
+        /// compact design spec.
+        public var buttonSize: CGFloat
 
         public init(
             contentMode: ContentMode = .richText,
@@ -218,6 +225,8 @@ extension RichTextEditorViewController {
             plusButtonBehavior: PlusButtonBehavior? = nil,
             markdownPlusButtonBehavior: MarkdownPlusButtonBehavior? = nil,
             plusButtonColor: UIColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1),
+            toolbarHeight: CGFloat = 58,
+            buttonSize: CGFloat = 38,
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -238,6 +247,8 @@ extension RichTextEditorViewController {
             self.plusButtonBehavior = plusButtonBehavior
             self.markdownPlusButtonBehavior = markdownPlusButtonBehavior
             self.plusButtonColor = plusButtonColor
+            self.toolbarHeight = toolbarHeight
+            self.buttonSize = buttonSize
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }

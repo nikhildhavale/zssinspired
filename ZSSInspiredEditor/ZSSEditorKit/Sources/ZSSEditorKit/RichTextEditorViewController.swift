@@ -13,6 +13,7 @@ public final class RichTextEditorViewController: UIViewController {
     public var toolbarConfiguration: ToolbarConfiguration {
         didSet {
             guard isViewLoaded else { return }
+            toolbarHeightConstraint?.constant = toolbarConfiguration.toolbarHeight
             configureToolbar()
             if oldValue.contentMode != toolbarConfiguration.contentMode {
                 updateToolbarSelectionState()
@@ -141,6 +142,7 @@ public final class RichTextEditorViewController: UIViewController {
     private let mentionTableView = UITableView(frame: .zero, style: .plain)
     private var placeholderTopConstraint: NSLayoutConstraint?
     private var placeholderLeadingConstraint: NSLayoutConstraint?
+    private var toolbarHeightConstraint: NSLayoutConstraint?
 
     private typealias MentionSection = (title: String?, suggestions: [any MentionItem])
 
@@ -285,11 +287,14 @@ private extension RichTextEditorViewController {
         view.addSubview(htmlTextView)
         configureMentionTableView()
 
+        let toolbarHeightConstraint = toolbarScrollView.heightAnchor.constraint(equalToConstant: toolbarConfiguration.toolbarHeight)
+        self.toolbarHeightConstraint = toolbarHeightConstraint
+
         NSLayoutConstraint.activate([
             toolbarScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             toolbarScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             toolbarScrollView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-            toolbarScrollView.heightAnchor.constraint(equalToConstant: 58),
+            toolbarHeightConstraint,
 
             toolbarStackView.topAnchor.constraint(equalTo: toolbarScrollView.contentLayoutGuide.topAnchor),
             toolbarStackView.leadingAnchor.constraint(equalTo: toolbarScrollView.contentLayoutGuide.leadingAnchor),
@@ -467,8 +472,8 @@ private extension RichTextEditorViewController {
         }
 
         let button = UIButton(configuration: configuration)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: toolbarConfiguration.buttonSize).isActive = true
+        button.heightAnchor.constraint(equalToConstant: toolbarConfiguration.buttonSize).isActive = true
         button.accessibilityLabel = title
         button.accessibilityValue = accessibilityValue
         button.configurationUpdateHandler = { button in
@@ -498,8 +503,8 @@ private extension RichTextEditorViewController {
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10)
 
         let button = UIButton(configuration: configuration)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: toolbarConfiguration.buttonSize).isActive = true
+        button.heightAnchor.constraint(equalToConstant: toolbarConfiguration.buttonSize).isActive = true
         button.accessibilityLabel = title
         button.menu = menu
         button.showsMenuAsPrimaryAction = true
@@ -555,8 +560,8 @@ private extension RichTextEditorViewController {
             button.showsMenuAsPrimaryAction = true
             button.accessibilityLabel = "More Actions"
         }
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        button.widthAnchor.constraint(greaterThanOrEqualToConstant: toolbarConfiguration.buttonSize).isActive = true
+        button.heightAnchor.constraint(equalToConstant: toolbarConfiguration.buttonSize).isActive = true
         toolbarStackView.addArrangedSubview(button)
     }
 
