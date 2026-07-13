@@ -68,6 +68,17 @@ public final class RichTextEditorViewController: UIViewController {
         }
     }
 
+    /// Padding around the editable content, applied to both the rich text
+    /// and HTML text views. Defaults to a roomy inset tuned for a
+    /// full-screen editor; set something close to `.zero` for a compact
+    /// inline field that matches a plain `UITextView`'s default insets.
+    public var contentInset = UIEdgeInsets(top: 22, left: 18, bottom: 22, right: 18) {
+        didSet {
+            guard isViewLoaded else { return }
+            applyContentInset()
+        }
+    }
+
     /// Replaces the editor content with `markdown`, converted to the
     /// attributed string the editor displays in edit mode. Understands the
     /// dialect the `markdown` getter emits: `**bold**`, `*italic*`,
@@ -128,6 +139,8 @@ public final class RichTextEditorViewController: UIViewController {
     private let toolbarStackView = UIStackView()
     private let placeholderLabel = UILabel()
     private let mentionTableView = UITableView(frame: .zero, style: .plain)
+    private var placeholderTopConstraint: NSLayoutConstraint?
+    private var placeholderLeadingConstraint: NSLayoutConstraint?
 
     private typealias MentionSection = (title: String?, suggestions: [any MentionItem])
 
@@ -392,7 +405,6 @@ private extension RichTextEditorViewController {
         editorTextView.adjustsFontForContentSizeCategory = true
         editorTextView.backgroundColor = .systemBackground
         editorTextView.keyboardDismissMode = .interactive
-        editorTextView.textContainerInset = UIEdgeInsets(top: 22, left: 18, bottom: 22, right: 18)
         editorTextView.typingAttributes = defaultTypingAttributes()
 
         placeholderLabel.text = placeholder
@@ -401,18 +413,32 @@ private extension RichTextEditorViewController {
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         editorTextView.addSubview(placeholderLabel)
 
-        NSLayoutConstraint.activate([
-            placeholderLabel.topAnchor.constraint(equalTo: editorTextView.topAnchor, constant: 27),
-            placeholderLabel.leadingAnchor.constraint(equalTo: editorTextView.leadingAnchor, constant: 23)
-        ])
+        let placeholderTopConstraint = placeholderLabel.topAnchor.constraint(equalTo: editorTextView.topAnchor)
+        let placeholderLeadingConstraint = placeholderLabel.leadingAnchor.constraint(equalTo: editorTextView.leadingAnchor)
+        NSLayoutConstraint.activate([placeholderTopConstraint, placeholderLeadingConstraint])
+        self.placeholderTopConstraint = placeholderTopConstraint
+        self.placeholderLeadingConstraint = placeholderLeadingConstraint
 
         htmlTextView.delegate = self
         htmlTextView.font = UIFont.monospacedSystemFont(ofSize: 15, weight: .regular)
         htmlTextView.backgroundColor = .systemGroupedBackground
-        htmlTextView.textContainerInset = editorTextView.textContainerInset
         htmlTextView.autocorrectionType = .no
         htmlTextView.autocapitalizationType = .none
         htmlTextView.isHidden = true
+
+        applyContentInset()
+    }
+
+    /// Drives `textContainerInset` on both text views and the placeholder's
+    /// top/leading offset from `contentInset`. The placeholder gets an extra
+    /// nudge matching the text container's line fragment padding so it lines
+    /// up with the first glyph, the same way it does for the default inset.
+    private func applyContentInset() {
+        editorTextView.textContainerInset = contentInset
+        htmlTextView.textContainerInset = contentInset
+        let padding = editorTextView.textContainer.lineFragmentPadding
+        placeholderTopConstraint?.constant = contentInset.top + padding
+        placeholderLeadingConstraint?.constant = contentInset.left + padding
     }
 
     func setInitialContent() {
