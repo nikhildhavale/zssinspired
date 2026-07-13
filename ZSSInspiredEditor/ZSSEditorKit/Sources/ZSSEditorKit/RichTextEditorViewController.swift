@@ -269,6 +269,8 @@ private extension RichTextEditorViewController {
 
         toolbarScrollView.translatesAutoresizingMaskIntoConstraints = false
         toolbarScrollView.showsHorizontalScrollIndicator = false
+        toolbarScrollView.showsVerticalScrollIndicator = false
+        toolbarScrollView.alwaysBounceVertical = false
         toolbarScrollView.backgroundColor = .secondarySystemBackground
 
         toolbarStackView.translatesAutoresizingMaskIntoConstraints = false
