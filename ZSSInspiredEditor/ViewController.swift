@@ -13,14 +13,14 @@ final class ViewController: UIViewController {
     private let editor = RichTextEditorViewController()
 
     private let remotePeople: [RichTextEditorViewController.MentionSuggestion] = [
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-101", name: "Alice Johnson", image: .url(URL(string: "https://i.pravatar.cc/96?img=1")!)),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-102", name: "Bob Stone", image: .url(URL(string: "https://i.pravatar.cc/96?img=2")!)),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-103", name: "Charlie Lopez", image: .url(URL(string: "https://i.pravatar.cc/96?img=3")!)),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-104", name: "David Kim", image: .initials("DK")),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-105", name: "Emma Wilson", image: .url(URL(string: "https://i.pravatar.cc/96?img=5")!)),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-106", name: "Nikhil Dhavale", image: .initials("ND"), isSelfMention: true),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-107", name: "Priya Shah", image: .url(URL(string: "https://i.pravatar.cc/96?img=9")!)),
-        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-108", name: "Sam Rivera", image: .initials("SR"))
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-101", displayName: "Alice Johnson", image: .url(URL(string: "https://i.pravatar.cc/96?img=1")!)),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-102", displayName: "Bob Stone", image: .url(URL(string: "https://i.pravatar.cc/96?img=2")!)),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-103", displayName: "Charlie Lopez", image: .url(URL(string: "https://i.pravatar.cc/96?img=3")!)),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-104", displayName: "David Kim", image: .initials("DK")),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-105", displayName: "Emma Wilson", image: .url(URL(string: "https://i.pravatar.cc/96?img=5")!)),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-106", displayName: "Nikhil Dhavale", image: .initials("ND"), isSelfMention: true),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-107", displayName: "Priya Shah", image: .url(URL(string: "https://i.pravatar.cc/96?img=9")!)),
+        RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "user-108", displayName: "Sam Rivera", image: .initials("SR"))
     ]
 
     private let hashtags: [RichTextEditorViewController.HashtagSuggestion] = [
@@ -35,8 +35,8 @@ final class ViewController: UIViewController {
 
         var configuration = editor.mentionConfiguration
         configuration.suggestions = [
-            RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "static-1", name: "Static Alice"),
-            RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "static-2", name: "Static Bob")
+            RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "static-1", displayName: "Static Alice"),
+            RichTextEditorViewController.MentionSuggestion(mentionIdentifier: "static-2", displayName: "Static Bob")
         ]
         configuration.loadingText = "Searching people..."
         configuration.exportFormat = .anchor

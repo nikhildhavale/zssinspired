@@ -36,7 +36,16 @@ extension RichTextEditorViewController {
     /// declare (e.g. an existing `name: NSString!` can't witness a
     /// non-optional `name: String` requirement).
     public protocol MentionItem {
+        /// Opaque backend/dedup key. Never shown to the user — don't wire a
+        /// username or handle in here expecting it to render; use
+        /// `mentionDisplayName` for anything user-visible.
         var mentionIdentifier: String { get }
+        /// The exact text rendered everywhere this mention appears: the
+        /// suggestion row AND the pill inserted into the editor. Must be the
+        /// human-readable name (e.g. "Nikhil Dhavale"), never a username,
+        /// handle, or identifier — the two are easy to conflate when a host
+        /// model only exposes one "name"-ish field, so double check this
+        /// isn't accidentally wired to a login/username property.
         var mentionDisplayName: String { get }
         var mentionImage: MentionImage? { get }
         var isSelfMention: Bool { get }
@@ -53,9 +62,13 @@ extension RichTextEditorViewController {
         public var isSelfMention: Bool
         public var isTeamMention: Bool
 
-        public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false, isTeamMention: Bool = false) {
-            self.mentionIdentifier = mentionIdentifier ?? name
-            self.mentionDisplayName = name
+        /// - Parameter displayName: The human-readable name to render — not a
+        ///   username/handle. Also used as `mentionIdentifier` when
+        ///   `mentionIdentifier` is omitted, so pass a stable backend key
+        ///   there explicitly if this name can change or collide.
+        public init(mentionIdentifier: String? = nil, displayName: String, image: MentionImage? = nil, isSelfMention: Bool = false, isTeamMention: Bool = false) {
+            self.mentionIdentifier = mentionIdentifier ?? displayName
+            self.mentionDisplayName = displayName
             self.mentionImage = image
             self.isSelfMention = isSelfMention
             self.isTeamMention = isTeamMention
@@ -130,12 +143,12 @@ extension RichTextEditorViewController {
         public init(
             triggers: [MentionTrigger] = [.at, .hash],
             suggestions: [any MentionItem] = [
-                MentionSuggestion(name: "Alice"),
-                MentionSuggestion(name: "Bob"),
-                MentionSuggestion(name: "Charlie"),
-                MentionSuggestion(name: "David"),
-                MentionSuggestion(name: "Emma"),
-                MentionSuggestion(name: "Nikhil", isSelfMention: true)
+                MentionSuggestion(displayName: "Alice"),
+                MentionSuggestion(displayName: "Bob"),
+                MentionSuggestion(displayName: "Charlie"),
+                MentionSuggestion(displayName: "David"),
+                MentionSuggestion(displayName: "Emma"),
+                MentionSuggestion(displayName: "Nikhil", isSelfMention: true)
             ],
             hashtagSuggestions: [any HashtagItem] = [],
             selfMentionLabel: String = "You",

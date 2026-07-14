@@ -22,7 +22,15 @@ extension RichTextEditorViewController {
             var effectiveRange = NSRange(location: 0, length: 0)
 
             if let mention = attributedText.attribute(.zssMentionItem, at: index, effectiveRange: &effectiveRange) as? any MentionItem {
-                markdown += "\(mentionTrigger(in: attributedText, at: index).symbol)\(mention.mentionDisplayName)"
+                let trigger = mentionTrigger(in: attributedText, at: index)
+                switch mentionConfiguration.exportFormat {
+                case .anchor:
+                    markdown += "\(trigger.symbol)\(mention.mentionDisplayName)"
+                case .custom(let formatter):
+                    let escapedName = escapedHTMLText(mention.mentionDisplayName)
+                    let escapedIdentifier = escapedHTMLAttribute(mention.mentionIdentifier)
+                    markdown += formatter(mention, escapedName, escapedIdentifier)
+                }
             } else if let hashtag = attributedText.attribute(.zssHashtagItem, at: index, effectiveRange: &effectiveRange) as? any HashtagItem {
                 markdown += "\(MentionTrigger.hash.symbol)\(hashtag.hashtagDisplayName)"
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {

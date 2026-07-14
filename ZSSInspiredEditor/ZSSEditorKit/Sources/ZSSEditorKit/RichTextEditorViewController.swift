@@ -1034,6 +1034,19 @@ extension RichTextEditorViewController {
         }
         return trigger
     }
+
+    func escapedHTMLText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    func escapedHTMLAttribute(_ text: String) -> String {
+        escapedHTMLText(text)
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+    }
 }
 
 private extension RichTextEditorViewController {
@@ -1644,19 +1657,6 @@ private extension RichTextEditorViewController {
         let escapedName = escapedHTMLText(hashtag.hashtagDisplayName)
         let escapedIdentifier = escapedHTMLAttribute(hashtag.hashtagIdentifier)
         return "<a class=\"hashtag\" data-hashtag-id=\"\(escapedIdentifier)\">\(MentionTrigger.hash.symbol)\(escapedName)</a>"
-    }
-
-    func escapedHTMLText(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-    }
-
-    func escapedHTMLAttribute(_ text: String) -> String {
-        escapedHTMLText(text)
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&#39;")
     }
 
     func syncHTMLToEditor() {
