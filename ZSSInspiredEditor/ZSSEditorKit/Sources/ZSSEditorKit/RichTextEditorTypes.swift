@@ -70,15 +70,16 @@ extension RichTextEditorViewController {
     public protocol HashtagItem {
         var hashtagIdentifier: String { get }
         var hashtagDisplayName: String { get }
-        var hashtagColor: UIColor { get }
+        /// Falls back to `.label` wherever a hashtag is rendered if `nil`.
+        var hashtagColor: UIColor? { get }
     }
 
     public struct HashtagSuggestion: HashtagItem {
         public var hashtagIdentifier: String
         public var hashtagDisplayName: String
-        public var hashtagColor: UIColor
+        public var hashtagColor: UIColor?
 
-        public init(hashtagIdentifier: String? = nil, name: String, color: UIColor = .label) {
+        public init(hashtagIdentifier: String? = nil, name: String, color: UIColor? = nil) {
             self.hashtagIdentifier = hashtagIdentifier ?? name
             self.hashtagDisplayName = name
             self.hashtagColor = color

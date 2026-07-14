@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'ZSSEditorKit'
-  s.version          = '0.4.2'
+  s.version          = '0.4.3'
   s.summary          = 'ZSS-inspired UIKit rich text editor component.'
   s.description      = <<-DESC
     A UIKit-based rich text editor view controller with a configurable toolbar,

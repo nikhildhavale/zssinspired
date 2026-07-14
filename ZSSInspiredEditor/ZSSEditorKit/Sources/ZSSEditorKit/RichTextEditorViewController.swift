@@ -2072,8 +2072,9 @@ private extension RichTextEditorViewController {
         let gap: CGFloat = 10
         let strokeWidth: CGFloat = 1.5
 
+        let color = hashtag.hashtagColor ?? .label
         let pillText = hashtag.hashtagDisplayName as NSString
-        let pillAttributes: [NSAttributedString.Key: Any] = [.font: pillFont, .foregroundColor: hashtag.hashtagColor]
+        let pillAttributes: [NSAttributedString.Key: Any] = [.font: pillFont, .foregroundColor: color]
         let pillTextSize = pillText.size(withAttributes: pillAttributes)
         let pillSize = CGSize(
             width: ceil(pillTextSize.width + horizontalPadding * 2),
@@ -2100,7 +2101,7 @@ private extension RichTextEditorViewController {
             let strokeRect = pillRect.insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
             let pillPath = UIBezierPath(roundedRect: strokeRect, cornerRadius: strokeRect.height / 2)
             pillPath.lineWidth = strokeWidth
-            hashtag.hashtagColor.setStroke()
+            color.setStroke()
             pillPath.stroke()
             pillText.draw(at: CGPoint(x: pillRect.minX + horizontalPadding, y: pillRect.minY + verticalPadding), withAttributes: pillAttributes)
         }
