@@ -385,7 +385,7 @@ private extension RichTextEditorViewController {
 
     func applyMentionConfiguration() {
         mentionTableView.rowHeight = max(1, mentionConfiguration.rowHeight)
-        mentionTableView.sectionHeaderHeight = mentionConfiguration.showsAlphabeticalSections ? max(1, mentionConfiguration.sectionHeaderHeight) : 0
+        mentionTableView.sectionHeaderHeight = mentionConfiguration.showsSuggestionSections ? max(1, mentionConfiguration.sectionHeaderHeight) : 0
         mentionTableView.layer.cornerRadius = max(0, mentionConfiguration.cornerRadius)
         mentionTableView.backgroundColor = mentionConfiguration.suggestionBackgroundColor
         mentionTableView.reloadData()
@@ -1772,18 +1772,23 @@ private extension RichTextEditorViewController {
         suggestion.isSelfMention
     }
 
+    /// Groups suggestions into "People"/"Team"/"Hashtags" sections (titles
+    /// sourced from `MentionConfiguration` so hosts can localize them),
+    /// dropping any section that ends up empty.
     private func makeMentionSections(from suggestions: [MentionSuggestionEntry]) -> [MentionSection] {
-        guard mentionConfiguration.showsAlphabeticalSections else {
+        guard mentionConfiguration.showsSuggestionSections else {
             return [(title: nil, suggestions: suggestions)]
         }
 
-        let grouped = Dictionary(grouping: suggestions) { suggestion in
-            guard let firstCharacter = suggestion.displayName.first, firstCharacter.isLetter else { return "#" }
-            return String(firstCharacter).uppercased()
-        }
-        return grouped.keys.sorted().map { title in
-            (title: title, suggestions: grouped[title] ?? [])
-        }
+        let people = suggestions.filter { if case .mention(let item) = $0 { return !item.isTeamMention }; return false }
+        let teams = suggestions.filter { if case .mention(let item) = $0 { return item.isTeamMention }; return false }
+        let hashtags = suggestions.filter { if case .hashtag = $0 { return true }; return false }
+
+        return [
+            (title: mentionConfiguration.peopleSectionTitle, suggestions: people),
+            (title: mentionConfiguration.teamSectionTitle, suggestions: teams),
+            (title: mentionConfiguration.hashtagSectionTitle, suggestions: hashtags)
+        ].filter { !$0.suggestions.isEmpty }
     }
 
     func showMentionSuggestionsIfNeeded() {
@@ -1812,7 +1817,7 @@ private extension RichTextEditorViewController {
         let width = min(max(1, mentionConfiguration.listWidth), view.bounds.width - (margin * 2))
         let rowCount = isMentionSuggestionsLoading ? 1 : filteredMentions.count
         let visibleRows = min(rowCount, max(1, mentionConfiguration.maximumVisibleRows))
-        let visibleSectionCount = mentionConfiguration.showsAlphabeticalSections ? min(mentionSections.count, visibleRows) : 0
+        let visibleSectionCount = mentionConfiguration.showsSuggestionSections ? min(mentionSections.count, visibleRows) : 0
         let desiredHeight = (CGFloat(visibleRows) * mentionTableView.rowHeight)
             + (CGFloat(visibleSectionCount) * mentionTableView.sectionHeaderHeight)
         let x = min(max(caretFrame.minX, margin), view.bounds.width - width - margin)

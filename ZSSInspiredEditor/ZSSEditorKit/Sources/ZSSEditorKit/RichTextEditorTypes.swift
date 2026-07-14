@@ -40,6 +40,10 @@ extension RichTextEditorViewController {
         var mentionDisplayName: String { get }
         var mentionImage: MentionImage? { get }
         var isSelfMention: Bool { get }
+        /// Whether this mention represents a team/group rather than a
+        /// person — drives whether it's grouped under the "People" or
+        /// "Team" suggestion section.
+        var isTeamMention: Bool { get }
     }
 
     public struct MentionSuggestion: MentionItem {
@@ -47,12 +51,14 @@ extension RichTextEditorViewController {
         public var mentionDisplayName: String
         public var mentionImage: MentionImage?
         public var isSelfMention: Bool
+        public var isTeamMention: Bool
 
-        public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false) {
+        public init(mentionIdentifier: String? = nil, name: String, image: MentionImage? = nil, isSelfMention: Bool = false, isTeamMention: Bool = false) {
             self.mentionIdentifier = mentionIdentifier ?? name
             self.mentionDisplayName = name
             self.mentionImage = image
             self.isSelfMention = isSelfMention
+            self.isTeamMention = isTeamMention
         }
     }
 
@@ -100,10 +106,16 @@ extension RichTextEditorViewController {
         public var imageShape: MentionImageShape
         public var imageSize: CGFloat
         public var rowHeight: CGFloat
-        public var showsAlphabeticalSections: Bool
+        /// Whether suggestions are grouped under "People"/"Team"/"Hashtags"
+        /// section headers, or shown as a single flat list.
+        public var showsSuggestionSections: Bool
         public var sectionHeaderHeight: CGFloat
         public var sectionHeaderForegroundColor: UIColor
         public var sectionHeaderBackgroundColor: UIColor
+        /// Section header titles, sourced from config so hosts can localize them.
+        public var peopleSectionTitle: String
+        public var teamSectionTitle: String
+        public var hashtagSectionTitle: String
         public var maximumVisibleRows: Int
         public var listWidth: CGFloat
         public var cornerRadius: CGFloat
@@ -139,10 +151,13 @@ extension RichTextEditorViewController {
             imageShape: MentionImageShape = .circle,
             imageSize: CGFloat = 44,
             rowHeight: CGFloat = 56,
-            showsAlphabeticalSections: Bool = true,
+            showsSuggestionSections: Bool = true,
             sectionHeaderHeight: CGFloat = 28,
             sectionHeaderForegroundColor: UIColor = .secondaryLabel,
             sectionHeaderBackgroundColor: UIColor = .tertiarySystemBackground,
+            peopleSectionTitle: String = "People",
+            teamSectionTitle: String = "Teams",
+            hashtagSectionTitle: String = "Hashtags",
             maximumVisibleRows: Int = 4,
             listWidth: CGFloat = 280,
             cornerRadius: CGFloat = 10,
@@ -169,10 +184,13 @@ extension RichTextEditorViewController {
             self.imageShape = imageShape
             self.imageSize = imageSize
             self.rowHeight = rowHeight
-            self.showsAlphabeticalSections = showsAlphabeticalSections
+            self.showsSuggestionSections = showsSuggestionSections
             self.sectionHeaderHeight = sectionHeaderHeight
             self.sectionHeaderForegroundColor = sectionHeaderForegroundColor
             self.sectionHeaderBackgroundColor = sectionHeaderBackgroundColor
+            self.peopleSectionTitle = peopleSectionTitle
+            self.teamSectionTitle = teamSectionTitle
+            self.hashtagSectionTitle = hashtagSectionTitle
             self.maximumVisibleRows = maximumVisibleRows
             self.listWidth = listWidth
             self.cornerRadius = cornerRadius
@@ -374,4 +392,8 @@ extension RichTextEditorViewController {
         case addLink
         case removeLink
     }
+}
+
+extension RichTextEditorViewController.MentionItem {
+    public var isTeamMention: Bool { false }
 }
