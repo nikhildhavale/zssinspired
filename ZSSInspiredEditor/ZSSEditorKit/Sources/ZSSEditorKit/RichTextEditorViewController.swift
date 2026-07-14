@@ -2338,11 +2338,25 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
     private func configureMentionCell(_ cell: UITableViewCell, for suggestion: any MentionItem, at indexPath: IndexPath) {
         var configuration = cell.defaultContentConfiguration()
-        configuration.text = suggestion.mentionDisplayName
-        configuration.textProperties.color = mentionConfiguration.suggestionForegroundColor
+        // The self-mention label is appended inline (rather than as
+        // `secondaryText`, a second line below the name) because the
+        // table's row height is a single fixed value shared by every row
+        // (`mentionConfiguration.rowHeight`) — a second line there would
+        // get clipped instead of growing the row.
         if isSelfMention(suggestion) {
-            configuration.secondaryText = mentionConfiguration.selfMentionLabel
-            configuration.secondaryTextProperties.color = mentionConfiguration.sectionHeaderForegroundColor
+            let font = configuration.textProperties.font
+            let text = NSMutableAttributedString(
+                string: suggestion.mentionDisplayName,
+                attributes: [.font: font, .foregroundColor: mentionConfiguration.suggestionForegroundColor]
+            )
+            text.append(NSAttributedString(
+                string: "  \(mentionConfiguration.selfMentionLabel)",
+                attributes: [.font: font, .foregroundColor: mentionConfiguration.sectionHeaderForegroundColor]
+            ))
+            configuration.attributedText = text
+        } else {
+            configuration.text = suggestion.mentionDisplayName
+            configuration.textProperties.color = mentionConfiguration.suggestionForegroundColor
         }
         configuration.image = mentionImage(for: suggestion)
         let imageSize = max(1, mentionConfiguration.imageSize)
