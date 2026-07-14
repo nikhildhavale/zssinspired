@@ -139,6 +139,15 @@ extension RichTextEditorViewController {
         public var hashtagBadgeSize: CGFloat
         public var hashtagBadgeBackgroundColor: UIColor
         public var hashtagBadgeForegroundColor: UIColor
+        /// Called after the user taps a mention suggestion, before it's inserted.
+        /// Gives the host app a chance to asynchronously resolve/refresh the
+        /// item (e.g. fetch additional details when a required field is
+        /// missing) before insertion happens. Call `completion` with either the
+        /// same item (insert as-is) or a replacement item (insert the resolved
+        /// version) to proceed with insertion — synchronously or async. Defaults
+        /// to nil: insertion proceeds immediately with the selected item
+        /// (current behavior). Not called for hashtags.
+        public var resolveMentionBeforeInsertion: ((_ item: any MentionItem, _ completion: @escaping (any MentionItem) -> Void) -> Void)?
 
         public init(
             triggers: [MentionTrigger] = [.at, .hash],
@@ -179,7 +188,8 @@ extension RichTextEditorViewController {
             loadingText: String = "Loading...",
             hashtagBadgeSize: CGFloat = 32,
             hashtagBadgeBackgroundColor: UIColor = .systemGray5,
-            hashtagBadgeForegroundColor: UIColor = .secondaryLabel
+            hashtagBadgeForegroundColor: UIColor = .secondaryLabel,
+            resolveMentionBeforeInsertion: ((_ item: any MentionItem, _ completion: @escaping (any MentionItem) -> Void) -> Void)? = nil
         ) {
             self.triggers = triggers
             self.suggestions = suggestions
@@ -213,6 +223,7 @@ extension RichTextEditorViewController {
             self.hashtagBadgeSize = hashtagBadgeSize
             self.hashtagBadgeBackgroundColor = hashtagBadgeBackgroundColor
             self.hashtagBadgeForegroundColor = hashtagBadgeForegroundColor
+            self.resolveMentionBeforeInsertion = resolveMentionBeforeInsertion
         }
     }
 

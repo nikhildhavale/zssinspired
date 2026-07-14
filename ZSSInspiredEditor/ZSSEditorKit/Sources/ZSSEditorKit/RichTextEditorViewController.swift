@@ -384,7 +384,13 @@ private extension RichTextEditorViewController {
     }
 
     func applyMentionConfiguration() {
-        mentionTableView.rowHeight = max(1, mentionConfiguration.rowHeight)
+        // Self-sizing rather than a fixed `rowHeight`: `UIListContentConfiguration`
+        // (avatar + name, or avatar + name + inline "You") needs more vertical
+        // room than a single fixed height can guarantee for every row — a
+        // fixed height was clipping avatar images. `rowHeight` still feeds
+        // the *estimate* used to size/position the suggestion popup.
+        mentionTableView.rowHeight = UITableView.automaticDimension
+        mentionTableView.estimatedRowHeight = max(1, mentionConfiguration.rowHeight)
         mentionTableView.sectionHeaderHeight = mentionConfiguration.showsSuggestionSections ? max(1, mentionConfiguration.sectionHeaderHeight) : 0
         mentionTableView.layer.cornerRadius = max(0, mentionConfiguration.cornerRadius)
         mentionTableView.backgroundColor = mentionConfiguration.suggestionBackgroundColor
@@ -1818,7 +1824,7 @@ private extension RichTextEditorViewController {
         let rowCount = isMentionSuggestionsLoading ? 1 : filteredMentions.count
         let visibleRows = min(rowCount, max(1, mentionConfiguration.maximumVisibleRows))
         let visibleSectionCount = mentionConfiguration.showsSuggestionSections ? min(mentionSections.count, visibleRows) : 0
-        let desiredHeight = (CGFloat(visibleRows) * mentionTableView.rowHeight)
+        let desiredHeight = (CGFloat(visibleRows) * max(1, mentionConfiguration.rowHeight))
             + (CGFloat(visibleSectionCount) * mentionTableView.sectionHeaderHeight)
         let x = min(max(caretFrame.minX, margin), view.bounds.width - width - margin)
         let minimumTop = view.safeAreaInsets.top + margin
@@ -2296,10 +2302,22 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
         label.textColor = mentionConfiguration.sectionHeaderForegroundColor
         headerView.addSubview(label)
 
+        // Separates each "People"/"Team"/"Hashtags" header from the rows
+        // above it (the previous section's rows, or the table's top edge).
+        let separator = UIView()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.backgroundColor = .separator
+        headerView.addSubview(separator)
+
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             label.trailingAnchor.constraint(lessThanOrEqualTo: headerView.trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: headerView.centerYAnchor)
+            label.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            separator.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
+            separator.topAnchor.constraint(equalTo: headerView.topAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
         ])
         return headerView
     }
@@ -2386,7 +2404,18 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
     public func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         guard !isMentionSuggestionsLoading else { return }
         guard let entry = mentionSuggestion(at: indexPath) else { return }
-        insertMention(entry)
+
+        guard case .mention(let item) = entry, let resolve = mentionConfiguration.resolveMentionBeforeInsertion else {
+            insertMention(entry)
+            return
+        }
+
+        setMentionSuggestionsLoading(true)
+        resolve(item) { [weak self] resolvedItem in
+            guard let self else { return }
+            self.setMentionSuggestionsLoading(false)
+            self.insertMention(.mention(resolvedItem))
+        }
     }
 }
 
