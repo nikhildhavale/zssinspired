@@ -134,7 +134,7 @@ extension RichTextEditorViewController {
             mentionVerticalPadding: CGFloat = 2,
             mentionCornerRadius: CGFloat = 6,
             suggestionForegroundColor: UIColor = .label,
-            suggestionBackgroundColor: UIColor = .secondarySystemBackground,
+            suggestionBackgroundColor: UIColor = .systemBackground,
             initialsBackgroundColors: [UIColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPink, .systemPurple, .systemTeal],
             imageShape: MentionImageShape = .circle,
             imageSize: CGFloat = 44,

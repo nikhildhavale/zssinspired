@@ -2011,8 +2011,7 @@ private extension RichTextEditorViewController {
 
     /// Renders `text` as a rounded pill of `foregroundColor`-on-`backgroundColor`,
     /// sized to fit at the editor's current typing font. Shared by the "@"
-    /// mention and "#" hashtag pills — neither shows its trigger symbol as
-    /// visible text, only the bare name.
+    /// mention and "#" hashtag pills.
     func pillAttachment(text: String, foregroundColor: UIColor, backgroundColor: UIColor, cornerRadius: CGFloat) -> NSTextAttachment {
         let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
         let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
@@ -2044,31 +2043,15 @@ private extension RichTextEditorViewController {
         )
     }
 
-    /// An outlined pill (stroke + text in `hashtag.hashtagColor`, no fill) so
-    /// the inserted pill matches the suggestion row's outlined-capsule look.
+    /// Filled pill (same look as a non-self "@" mention pill), with the "#"
+    /// shown as part of the visible text.
     func hashtagPillAttachment(for hashtag: any HashtagItem) -> NSTextAttachment {
-        let font = editorTextView.typingAttributes[.font] as? UIFont ?? baseFont
-        let horizontalPadding = max(0, mentionConfiguration.mentionHorizontalPadding)
-        let verticalPadding = max(0, mentionConfiguration.mentionVerticalPadding)
-        let text = hashtag.hashtagDisplayName as NSString
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: hashtag.hashtagColor]
-        let textSize = text.size(withAttributes: attributes)
-        let strokeWidth: CGFloat = 1
-        let size = CGSize(width: ceil(textSize.width + (horizontalPadding * 2)), height: ceil(textSize.height + (verticalPadding * 2)))
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { _ in
-            let strokeRect = CGRect(origin: .zero, size: size).insetBy(dx: strokeWidth / 2, dy: strokeWidth / 2)
-            let path = UIBezierPath(roundedRect: strokeRect, cornerRadius: max(0, mentionConfiguration.mentionCornerRadius))
-            path.lineWidth = strokeWidth
-            hashtag.hashtagColor.setStroke()
-            path.stroke()
-            text.draw(at: CGPoint(x: horizontalPadding, y: verticalPadding), withAttributes: attributes)
-        }
-
-        let attachment = NSTextAttachment()
-        attachment.image = image
-        attachment.bounds = CGRect(x: 0, y: font.descender - verticalPadding, width: size.width, height: size.height)
-        return attachment
+        pillAttachment(
+            text: MentionTrigger.hash.symbol + hashtag.hashtagDisplayName,
+            foregroundColor: mentionConfiguration.otherMentionForegroundColor,
+            backgroundColor: mentionConfiguration.otherMentionBackgroundColor,
+            cornerRadius: mentionConfiguration.mentionCornerRadius
+        )
     }
 
     /// Composes the "#" badge + outlined colored pill shown for a hashtag
