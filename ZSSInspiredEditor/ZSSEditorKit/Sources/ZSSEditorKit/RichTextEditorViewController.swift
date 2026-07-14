@@ -2130,13 +2130,20 @@ private extension RichTextEditorViewController {
         }
 
         let replacement = NSMutableAttributedString(attachment: attachment)
+        let attachmentRange = NSRange(location: 0, length: replacement.length)
+        // Without an explicit .font here, the attachment character has none —
+        // if the caret ends up adjacent to it (e.g. backspacing right after a
+        // mention that's the first thing in the document), UITextView derives
+        // typingAttributes from this character and falls back to a small
+        // system default font, shrinking whatever's typed next.
+        replacement.addAttributes(trailingAttributes, range: attachmentRange)
         switch entry {
         case .mention(let item):
-            replacement.addAttribute(.zssMentionItem, value: item, range: NSRange(location: 0, length: replacement.length))
+            replacement.addAttribute(.zssMentionItem, value: item, range: attachmentRange)
         case .hashtag(let item):
-            replacement.addAttribute(.zssHashtagItem, value: item, range: NSRange(location: 0, length: replacement.length))
+            replacement.addAttribute(.zssHashtagItem, value: item, range: attachmentRange)
         }
-        replacement.addAttribute(.zssMentionTrigger, value: trigger.symbol, range: NSRange(location: 0, length: replacement.length))
+        replacement.addAttribute(.zssMentionTrigger, value: trigger.symbol, range: attachmentRange)
         replacement.append(NSAttributedString(string: " ", attributes: trailingAttributes))
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
