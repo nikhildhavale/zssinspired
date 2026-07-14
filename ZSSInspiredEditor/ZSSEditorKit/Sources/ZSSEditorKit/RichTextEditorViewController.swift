@@ -2302,8 +2302,8 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
         label.textColor = mentionConfiguration.sectionHeaderForegroundColor
         headerView.addSubview(label)
 
-        // Separates each "People"/"Team"/"Hashtags" header from the rows
-        // above it (the previous section's rows, or the table's top edge).
+        // Separates each "People"/"Team"/"Hashtags" header from its own
+        // rows below it.
         let separator = UIView()
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.backgroundColor = .separator
@@ -2316,7 +2316,7 @@ extension RichTextEditorViewController: UITableViewDataSource, UITableViewDelega
 
             separator.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
-            separator.topAnchor.constraint(equalTo: headerView.topAnchor),
+            separator.bottomAnchor.constraint(equalTo: headerView.bottomAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale)
         ])
         return headerView
