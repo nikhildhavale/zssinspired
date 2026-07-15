@@ -36,6 +36,30 @@ extension RichTextEditorViewController {
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 markdown += "[image]"
             } else {
+                // A run's attributes (e.g. bold) commonly stay unchanged
+                // across a "\n" — the same bold style continuing into the
+                // next bulleted line, say — so effectiveRange can span
+                // multiple lines/list items even though each needs its own
+                // delimiters. A *uniform* run's reported range doesn't
+                // depend on where within it we query, so it can start
+                // before `index` too — rebuild the range anchored at
+                // `index`, capped at the first newline (keeping any
+                // further *consecutive* newlines with it, so multiple
+                // blank lines still fall through the trailing-newline
+                // stripping below) so emphasis is never wrapped around an
+                // embedded line/paragraph break.
+                let runEnd = effectiveRange.upperBound
+                let nsString = attributedText.string as NSString
+                var chunkEnd = runEnd
+                let newlineRange = nsString.range(of: "\n", options: [], range: NSRange(location: index, length: runEnd - index))
+                if newlineRange.location != NSNotFound {
+                    chunkEnd = newlineRange.location + newlineRange.length
+                    while chunkEnd < runEnd, nsString.character(at: chunkEnd) == 10 {
+                        chunkEnd += 1
+                    }
+                }
+                effectiveRange = NSRange(location: index, length: chunkEnd - index)
+
                 let text = attributedText.attributedSubstring(from: effectiveRange).string
                 var core = text
                 var trailingNewlines = ""
@@ -58,8 +82,16 @@ extension RichTextEditorViewController {
                         // whitespace per CommonMark (e.g. "**bold **" won't
                         // parse as bold) — trim the span being wrapped and
                         // reattach the whitespace outside every delimiter
-                        // instead of inside the innermost one.
-                        let leadingSpace = String(core.prefix(while: { $0 == " " }))
+                        // instead of inside the innermost one. A leading
+                        // "•"/"1." list marker (which can carry the same
+                        // bold/italic attributes as the rest of the line,
+                        // e.g. a fully-bold list item) is excluded the same
+                        // way: wrapped inside the delimiters it wouldn't be
+                        // recognized as a list marker by the bullet/number
+                        // post-processing below, which only matches at the
+                        // very start of the line.
+                        let leadingMarkerRange = core.range(of: #"^\s*(•|\d+\.)\s?"#, options: .regularExpression)
+                        let leadingSpace = leadingMarkerRange.map { String(core[$0]) } ?? String(core.prefix(while: { $0 == " " }))
                         let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
                         var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
 
