@@ -1925,10 +1925,13 @@ private extension RichTextEditorViewController {
     }
 
     /// Renders `sourceImage` into the same fixed `imageSize` × `imageSize`
-    /// canvas `initialsImage` uses, aspect-filled and clipped to
+    /// canvas `initialsImage` uses, aspect-fitted and clipped to
     /// `mentionConfiguration.imageShape`, so a real photo and an initials
     /// fallback are always the same size and shape regardless of the
-    /// source image's own dimensions/aspect ratio.
+    /// source image's own dimensions/aspect ratio. Aspect-*fit* (not fill):
+    /// a non-square source (e.g. a full-body illustration/sticker rather
+    /// than a square headshot) is shown in full — never cropped — even if
+    /// that means empty space on two sides within the circle/rounded-rect.
     func avatarImage(from sourceImage: UIImage) -> UIImage {
         let imageSize = max(1, mentionConfiguration.imageSize)
         let size = CGSize(width: imageSize, height: imageSize)
@@ -1936,16 +1939,16 @@ private extension RichTextEditorViewController {
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { context in
             avatarPath(in: bounds).addClip()
-            sourceImage.draw(in: aspectFillRect(for: sourceImage.size, in: bounds))
+            sourceImage.draw(in: aspectFitRect(for: sourceImage.size, in: bounds))
         }
     }
 
-    /// The rect to draw a `sourceSize` image in so it fills `bounds` while
-    /// preserving its aspect ratio (cropping any overflow), centered.
-    func aspectFillRect(for sourceSize: CGSize, in bounds: CGRect) -> CGRect {
+    /// The rect to draw a `sourceSize` image in so it fits entirely within
+    /// `bounds` while preserving its aspect ratio (no cropping), centered.
+    func aspectFitRect(for sourceSize: CGSize, in bounds: CGRect) -> CGRect {
         guard sourceSize.width > 0, sourceSize.height > 0 else { return bounds }
 
-        let scale = max(bounds.width / sourceSize.width, bounds.height / sourceSize.height)
+        let scale = min(bounds.width / sourceSize.width, bounds.height / sourceSize.height)
         let scaledSize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
         let origin = CGPoint(x: bounds.midX - scaledSize.width / 2, y: bounds.midY - scaledSize.height / 2)
         return CGRect(origin: origin, size: scaledSize)
