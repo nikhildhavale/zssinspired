@@ -129,9 +129,13 @@ public final class RichTextEditorViewController: UIViewController {
     ]
 
     /// Matches the markdown toolbar design: flat buttons, no menus —
-    /// + | B I U | bullet, numbered | outdent, indent | link, unlink.
+    /// + | B I | bullet, numbered | outdent, indent | link, unlink.
+    /// No underline: standard Markdown has no underline syntax (this
+    /// editor's own "__text__" convention collides with the widely-used
+    /// bold meaning of "__", so it doesn't round-trip through other
+    /// Markdown parsers/renderers).
     private let markdownToolbarOptions: [ToolbarOption] = [
-        .bold, .italic, .underline,
+        .bold, .italic,
         .bulletList, .numberedList,
         .outdent, .indent,
         .addLink, .removeLink
