@@ -47,29 +47,41 @@ extension RichTextEditorViewController {
                 var formattedText = core
 
                 if !core.isEmpty {
-                    if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
-                        if let headingPrefix = headingMarkdownPrefix(for: font) {
-                            formattedText = core
-                                .components(separatedBy: "\n")
-                                .map { $0.isEmpty ? $0 : headingPrefix + $0 }
-                                .joined(separator: "\n")
-                        } else {
-                            let traits = font.fontDescriptor.symbolicTraits
-                            if traits.contains(.traitBold) {
-                                formattedText = "**\(formattedText)**"
+                    if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont,
+                       let headingPrefix = headingMarkdownPrefix(for: font) {
+                        formattedText = core
+                            .components(separatedBy: "\n")
+                            .map { $0.isEmpty ? $0 : headingPrefix + $0 }
+                            .joined(separator: "\n")
+                    } else {
+                        // Emphasis delimiters can't be directly adjacent to
+                        // whitespace per CommonMark (e.g. "**bold **" won't
+                        // parse as bold) — trim the span being wrapped and
+                        // reattach the whitespace outside every delimiter
+                        // instead of inside the innermost one.
+                        let leadingSpace = String(core.prefix(while: { $0 == " " }))
+                        let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
+                        var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
+
+                        if !wrapped.isEmpty {
+                            if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
+                                let traits = font.fontDescriptor.symbolicTraits
+                                if traits.contains(.traitBold) {
+                                    wrapped = "**\(wrapped)**"
+                                }
+                                if traits.contains(.traitItalic) {
+                                    wrapped = "*\(wrapped)*"
+                                }
                             }
-                            if traits.contains(.traitItalic) {
-                                formattedText = "*\(formattedText)*"
+                            if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
+                                wrapped = "__\(wrapped)__"
+                            }
+                            if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
+                                wrapped = "~~\(wrapped)~~"
                             }
                         }
-                    }
 
-                    if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
-                        formattedText = "__\(formattedText)__"
-                    }
-
-                    if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
-                        formattedText = "~~\(formattedText)~~"
+                        formattedText = leadingSpace + wrapped + trailingSpace
                     }
 
                     if let link = attributedText.attribute(.link, at: index, effectiveRange: nil) as? URL {
