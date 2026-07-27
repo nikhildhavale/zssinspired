@@ -18,6 +18,9 @@ public final class RichTextEditorViewController: UIViewController {
             if oldValue.contentMode != toolbarConfiguration.contentMode {
                 updateToolbarSelectionState()
             }
+            if oldValue.bodyFont != toolbarConfiguration.bodyFont {
+                applyBaseFont()
+            }
         }
     }
 
@@ -194,7 +197,9 @@ public final class RichTextEditorViewController: UIViewController {
     private var toolbarButtons: [ToolbarItem: UIButton] = [:]
     private weak var listsMenuButton: UIButton?
 
-    let baseFont = UIFont.preferredFont(forTextStyle: .body)
+    var baseFont: UIFont {
+        UIFontMetrics(forTextStyle: .body).scaledFont(for: toolbarConfiguration.bodyFont)
+    }
     let linkColor = UIColor.systemBlue
 
     public init(
@@ -468,10 +473,14 @@ private extension RichTextEditorViewController {
         }
     }
 
+    func applyBaseFont() {
+        editorTextView.font = baseFont
+        placeholderLabel.font = baseFont
+    }
+
     func configureTextViews() {
         editorTextView.delegate = self
         editorTextView.allowsEditingTextAttributes = true
-        editorTextView.font = baseFont
         editorTextView.adjustsFontForContentSizeCategory = true
         editorTextView.backgroundColor = .systemBackground
         editorTextView.keyboardDismissMode = .interactive
@@ -479,8 +488,8 @@ private extension RichTextEditorViewController {
 
         placeholderLabel.text = placeholder
         placeholderLabel.textColor = .placeholderText
-        placeholderLabel.font = baseFont
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        applyBaseFont()
         editorTextView.addSubview(placeholderLabel)
 
         let placeholderTopConstraint = placeholderLabel.topAnchor.constraint(equalTo: editorTextView.topAnchor)

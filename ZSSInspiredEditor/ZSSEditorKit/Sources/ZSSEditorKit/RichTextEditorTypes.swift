@@ -297,6 +297,12 @@ extension RichTextEditorViewController {
         /// Defaults to 38pt; set something smaller (e.g. 30) to match a more
         /// compact design spec.
         public var buttonSize: CGFloat
+        /// Base font for the editor's body text, before Dynamic Type scaling
+        /// is applied. Defaults to the system font at 17pt, matching the
+        /// `.body` text style at the default content size category; pass a
+        /// different font (e.g. `.systemFont(ofSize: 15)`) to change the
+        /// editor's size, weight, or family.
+        public var bodyFont: UIFont
 
         public init(
             contentMode: ContentMode = .richText,
@@ -306,6 +312,7 @@ extension RichTextEditorViewController {
             plusButtonColor: UIColor = UIColor(red: 0.18, green: 0.55, blue: 0.34, alpha: 1),
             toolbarHeight: CGFloat = 58,
             buttonSize: CGFloat = 38,
+            bodyFont: UIFont = .systemFont(ofSize: 17),
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -328,6 +335,7 @@ extension RichTextEditorViewController {
             self.plusButtonColor = plusButtonColor
             self.toolbarHeight = toolbarHeight
             self.buttonSize = buttonSize
+            self.bodyFont = bodyFont
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }
