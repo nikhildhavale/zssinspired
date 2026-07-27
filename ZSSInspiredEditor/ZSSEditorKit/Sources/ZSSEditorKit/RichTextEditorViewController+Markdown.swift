@@ -228,6 +228,13 @@ extension RichTextEditorViewController {
         let result = NSMutableAttributedString()
         var remainder = text
         var plain = ""
+        // Mirrors the live-typing trigger boundary (`activeMentionQueryRange()`'s
+        // `(?<!\S)[@#]...`): a token only starts at the beginning of this span or
+        // right after whitespace, so "john@example.com" doesn't get mistaken for
+        // a mention. Defaults true at the start of every call (including nested
+        // calls for link labels/emphasis content), treating the start of a
+        // bracket/delimiter span as a boundary too.
+        var precededByWhitespace = true
 
         func flushPlain() {
             guard !plain.isEmpty else { return }
@@ -242,6 +249,15 @@ extension RichTextEditorViewController {
                 linkStyle.link = link.url
                 result.append(markdownInlineAttributedString(from: link.label, style: linkStyle, lineFont: lineFont))
                 remainder = link.remainder
+                precededByWhitespace = false
+                continue
+            }
+
+            if precededByWhitespace, let match = matchMentionToken(remainder) {
+                flushPlain()
+                result.append(mentionOrHashtagPillAttributedString(trigger: match.trigger, token: String(match.token), style: style, lineFont: lineFont))
+                remainder = match.remainder
+                precededByWhitespace = false
                 continue
             }
 
@@ -251,13 +267,63 @@ extension RichTextEditorViewController {
                 span.apply(&innerStyle)
                 result.append(markdownInlineAttributedString(from: span.content, style: innerStyle, lineFont: lineFont))
                 remainder = span.remainder
+                precededByWhitespace = false
                 continue
             }
 
-            plain.append(remainder.removeFirst())
+            let char = remainder.removeFirst()
+            plain.append(char)
+            precededByWhitespace = char.isWhitespace
         }
 
         flushPlain()
+        return result
+    }
+
+    /// Matches an "@identifier" or "#tag" token at the start of `text` — the
+    /// inverse of what `attributedStringToMarkdown` emits for a mention/hashtag
+    /// pill. Character class matches `activeMentionQueryRange()`'s
+    /// `[A-Za-z0-9_]*` exactly, so import recognizes precisely the tokens the
+    /// live suggestion picker could have produced.
+    private func matchMentionToken(_ text: Substring) -> (trigger: MentionTrigger, token: Substring, remainder: Substring)? {
+        guard let first = text.first, let trigger = MentionTrigger(rawValue: first) else { return nil }
+        let rest = text.dropFirst()
+        let token = rest.prefix { ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0) || $0 == "_" }
+        guard !token.isEmpty else { return nil }
+        return (trigger, token, rest.dropFirst(token.count))
+    }
+
+    /// Builds a mention/hashtag pill directly from the parsed token text, the
+    /// same way picking a suggestion from the live "@"/"#" picker does — no
+    /// backend lookup: the token text itself becomes the pill's identifier
+    /// and display name, via the same `MentionSuggestion`/`HashtagSuggestion`
+    /// value types and `mentionPillAttachment`/`hashtagPillAttachment`
+    /// rendering `insertMention(_:)` uses, so an imported pill is visually
+    /// identical to a typed-and-picked one.
+    private func mentionOrHashtagPillAttributedString(trigger: MentionTrigger, token: String, style: MarkdownInlineStyle, lineFont: UIFont) -> NSAttributedString {
+        let entry: MentionSuggestionEntry
+        let attachment: NSTextAttachment
+        switch trigger {
+        case .at:
+            let item = MentionSuggestion(displayName: token)
+            attachment = mentionPillAttachment(for: item)
+            entry = .mention(item)
+        case .hash:
+            let item = HashtagSuggestion(name: token)
+            attachment = hashtagPillAttachment(for: item)
+            entry = .hashtag(item)
+        }
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        let range = NSRange(location: 0, length: result.length)
+        var attributes = markdownInlineAttributes(style, lineFont: lineFont)
+        attributes.removeValue(forKey: .backgroundColor)
+        result.addAttributes(attributes, range: range)
+        switch entry {
+        case .mention(let item): result.addAttribute(.zssMentionItem, value: item, range: range)
+        case .hashtag(let item): result.addAttribute(.zssHashtagItem, value: item, range: range)
+        }
+        result.addAttribute(.zssMentionTrigger, value: trigger.symbol, range: range)
         return result
     }
 

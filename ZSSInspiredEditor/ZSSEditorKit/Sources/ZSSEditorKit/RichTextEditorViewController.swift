@@ -90,8 +90,11 @@ public final class RichTextEditorViewController: UIViewController {
     /// attributed string the editor displays in edit mode. Understands the
     /// dialect the `markdown` getter emits: `**bold**`, `*italic*`,
     /// `__underline__`, `~~strikethrough~~`, `[text](url)`, `#`–`######`
-    /// headings, `- ` bullets, literal `1. ` numbered lists and 4-space
-    /// list indents. Safe to call before the view is loaded.
+    /// headings, `- ` bullets, literal `1. ` numbered lists, 4-space list
+    /// indents, and "@"/"#" mention/hashtag tokens (rendered as pills the
+    /// same way picking one from the live suggestion picker would, using
+    /// the token text itself as the display name — no backend lookup).
+    /// Safe to call before the view is loaded.
     public func setMarkdown(_ markdown: String) {
         loadViewIfNeeded()
         setEditorContent(markdownToAttributedString(markdown))
@@ -1619,7 +1622,11 @@ private extension RichTextEditorViewController {
     }
 }
 
-private extension RichTextEditorViewController {
+// Not `private`: `mentionPillAttachment`/`hashtagPillAttachment` below are
+// reused from RichTextEditorViewController+Markdown.swift's markdown import,
+// so this block needs to be visible outside this file (still module-internal,
+// not part of the public API).
+extension RichTextEditorViewController {
 
     func htmlString() -> String {
         mentionAwareHTMLString()
