@@ -361,20 +361,42 @@ extension RichTextEditorViewController {
         case h5 = "H5"
         case h6 = "H6"
 
-        var pointSize: CGFloat {
+        /// Point size for this heading level, scaled from `baseFontSize`
+        /// using the same ratios MarkdownUI's GitHub theme uses (h1=2x,
+        /// h2=1.5x, h3=1.25x, h4=1x, h5=0.875x, h6=0.85x) — so headings stay
+        /// proportional to whatever body font size the host configures,
+        /// instead of a fixed set of absolute sizes.
+        func pointSize(baseFontSize: CGFloat) -> CGFloat {
             switch self {
-            case .paragraph: return 17
-            case .h1: return 34
-            case .h2: return 28
-            case .h3: return 24
-            case .h4: return 21
-            case .h5: return 19
-            case .h6: return 17
+            case .paragraph: return baseFontSize
+            case .h1: return baseFontSize * 2
+            case .h2: return baseFontSize * 1.5
+            case .h3: return baseFontSize * 1.25
+            case .h4: return baseFontSize
+            case .h5: return baseFontSize * 0.875
+            case .h6: return baseFontSize * 0.85
             }
         }
 
         var isBold: Bool {
             self != .paragraph
+        }
+
+        /// Markdown "#" count for this level, or nil for `.paragraph` (no
+        /// prefix). Since H4's size ratio (1x) is identical to plain body
+        /// text, headings are tracked with a dedicated `.zssHeadingStyle`
+        /// attribute rather than detected from font size/weight alone —
+        /// this is what gets read back out on markdown export.
+        var level: Int? {
+            switch self {
+            case .paragraph: return nil
+            case .h1: return 1
+            case .h2: return 2
+            case .h3: return 3
+            case .h4: return 4
+            case .h5: return 5
+            case .h6: return 6
+            }
         }
     }
 

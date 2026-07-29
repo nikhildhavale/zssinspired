@@ -110,6 +110,22 @@ public final class RichTextEditorViewController: UIViewController {
         }
     }
 
+    /// Presents a read-only modal showing how `markdown` will actually
+    /// render — built by running it back through `setMarkdown`'s own
+    /// attributed-string pipeline (the same block spacing/indent logic
+    /// `reflowBlockSpacing` applies), not a third-party Markdown renderer.
+    /// Pass the already-converted markdown a host already has on hand (e.g.
+    /// a `markdownPlusButtonBehavior` handler's `markdown` argument) rather
+    /// than reading `editor.markdown` again. Not wired to any built-in
+    /// toolbar button; call this from a host-supplied action to add a
+    /// "Preview" affordance.
+    public func presentMarkdownPreview(markdown: String, animated: Bool = true) {
+        let previewText = markdownToAttributedString(markdown)
+        let previewViewController = MarkdownPreviewViewController(attributedText: previewText, contentInset: contentInset)
+        let navigationController = UINavigationController(rootViewController: previewViewController)
+        present(navigationController, animated: animated)
+    }
+
     /// Gives keyboard focus to the editor. Safe to call before the view is
     /// loaded (though the keyboard only appears once the view is in a window).
     public func focus() {
@@ -851,14 +867,23 @@ private extension RichTextEditorViewController {
         selectedHeadingStyle = headingStyle
         let range = currentParagraphRange()
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
+        let headingPointSize = headingStyle.pointSize(baseFontSize: baseFont.pointSize)
         mutableText.enumerateAttribute(.font, in: range) { value, subrange, _ in
             let existingFont = (value as? UIFont) ?? baseFont
-            let font = fontMatching(existingFont, pointSize: headingStyle.pointSize, forceBold: headingStyle.isBold)
+            let font = fontMatching(existingFont, pointSize: headingPointSize, forceBold: headingStyle.isBold)
             mutableText.addAttribute(.font, value: font, range: subrange)
+        }
+        if range.length > 0 {
+            if headingStyle == .paragraph {
+                mutableText.removeAttribute(.zssHeadingStyle, range: range)
+            } else {
+                mutableText.addAttribute(.zssHeadingStyle, value: headingStyle.rawValue, range: range)
+            }
         }
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.upperBound, length: 0)
-        editorTextView.typingAttributes[.font] = fontMatching(currentFont(), pointSize: headingStyle.pointSize, forceBold: headingStyle.isBold)
+        editorTextView.typingAttributes[.font] = fontMatching(currentFont(), pointSize: headingPointSize, forceBold: headingStyle.isBold)
+        editorTextView.typingAttributes[.zssHeadingStyle] = headingStyle == .paragraph ? nil : headingStyle.rawValue
         updateToolbarSelectionState()
     }
 
@@ -1028,8 +1053,123 @@ extension RichTextEditorViewController {
     func defaultParagraphStyle() -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 2
-        style.paragraphSpacing = 8
+        style.paragraphSpacing = looseSpacing
         return style
+    }
+
+    /// Horizontal indent step, in points, for one level of list nesting or
+    /// manual indent/outdent. Also the extra left indent list content gets
+    /// versus plain paragraphs — matching the left padding a Markdown
+    /// renderer (e.g. MarkdownUI) gives list blocks that plain paragraphs
+    /// don't have.
+    static let indentStep: CGFloat = 24
+
+    /// Paragraph spacing after a block that isn't immediately continued by
+    /// a sibling of the same kind — mirrors the margin a Markdown renderer
+    /// puts between sibling blocks (a paragraph followed by a list, two
+    /// different lists back to back, etc). Lines that continue the same
+    /// list or the same soft-wrapped paragraph get no extra spacing instead.
+    private var looseSpacing: CGFloat { 8 }
+
+    /// Extra spacing before a heading, on top of `looseSpacing` — headings
+    /// get noticeably more breathing room above them than an ordinary block
+    /// transition (MarkdownUI's GitHub theme gives headings a top margin
+    /// 1.5x a paragraph's bottom margin; scaled the same way here).
+    private var headingLeadingSpacing: CGFloat { looseSpacing * 1.5 }
+
+    private struct LineBlockInfo {
+        var isHeading = false
+        var isList = false
+        var isOrderedList = false
+        var nestingLevel = 0
+    }
+
+    private func lineBlockInfo(for line: String, existingParagraphStyle: NSParagraphStyle?, isHeading: Bool) -> LineBlockInfo {
+        var info = LineBlockInfo()
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        info.isHeading = isHeading
+        info.isList = !info.isHeading && trimmedLine.hasListMarker
+        info.isOrderedList = info.isList && trimmedLine.orderedListNumber != nil
+
+        let rawHeadIndent = existingParagraphStyle?.headIndent ?? 0
+        let steps = max(0, Int((rawHeadIndent / Self.indentStep).rounded()))
+        info.nestingLevel = info.isList ? max(0, steps - 1) : steps
+        return info
+    }
+
+    /// Whether `next` should hug `current` with no extra gap (continuing the
+    /// same list, or the same soft-wrapped paragraph) versus needing the
+    /// extra "sibling block" gap a Markdown renderer would add between them.
+    private func isTightTransition(from current: LineBlockInfo, to next: LineBlockInfo) -> Bool {
+        if current.isList && next.isList {
+            if next.nestingLevel > current.nestingLevel { return true }
+            return next.nestingLevel == current.nestingLevel && next.isOrderedList == current.isOrderedList
+        }
+        return !current.isList && !current.isHeading && !next.isList && !next.isHeading
+    }
+
+    /// Rewrites every paragraph's spacing and list indent in place, so
+    /// block-to-block transitions (entering/leaving a list, switching list
+    /// type, starting a new paragraph) get the gap a Markdown renderer gives
+    /// between sibling blocks, while lines continuing the same list or
+    /// paragraph stay tight. Only touches `.paragraphStyle`, so it's safe to
+    /// call directly on `editorTextView.textStorage` (wrapped in
+    /// `beginEditing`/`endEditing`) without disturbing text or selection.
+    func reflowBlockSpacing(in attributedString: NSMutableAttributedString) {
+        let nsString = attributedString.string as NSString
+        guard nsString.length > 0 else { return }
+
+        var ranges: [NSRange] = []
+        var cursor = 0
+        while cursor < nsString.length {
+            let paragraphRange = nsString.paragraphRange(for: NSRange(location: cursor, length: 0))
+            ranges.append(paragraphRange)
+            guard paragraphRange.upperBound > cursor else { break }
+            cursor = paragraphRange.upperBound
+        }
+
+        let infos: [LineBlockInfo] = ranges.map { range in
+            let line = nsString.substring(with: range)
+            let existingStyle = attributedString.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+            // Headings never contain a literal "#" in the displayed text —
+            // both `applyHeadingStyle` and markdown import strip it — so
+            // `.zssHeadingStyle` (set by both of those) is the only reliable
+            // signal here, not a text pattern.
+            let isHeading = range.location < attributedString.length
+                && attributedString.attribute(.zssHeadingStyle, at: range.location, effectiveRange: nil) != nil
+            return lineBlockInfo(for: line, existingParagraphStyle: existingStyle, isHeading: isHeading)
+        }
+
+        for (index, range) in ranges.enumerated() {
+            let info = infos[index]
+            let next = index + 1 < infos.count ? infos[index + 1] : nil
+            let tight = next.map { isTightTransition(from: info, to: $0) } ?? true
+
+            let existing = attributedString.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+            let style = (existing?.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+            style.lineSpacing = 2
+            if tight {
+                style.paragraphSpacing = 0
+            } else if next?.isHeading == true {
+                style.paragraphSpacing = headingLeadingSpacing
+            } else {
+                style.paragraphSpacing = looseSpacing
+            }
+            let indent = CGFloat(info.nestingLevel + (info.isList ? 1 : 0)) * Self.indentStep
+            style.firstLineHeadIndent = indent
+            style.headIndent = indent
+            attributedString.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+    }
+
+    /// Re-applies `reflowBlockSpacing` to the live editor content in place,
+    /// preserving the current selection.
+    func reflowEditorParagraphStyles() {
+        let textStorage = editorTextView.textStorage
+        guard textStorage.length > 0 else { return }
+        textStorage.beginEditing()
+        reflowBlockSpacing(in: textStorage)
+        textStorage.endEditing()
     }
 
     func fontMatching(_ font: UIFont, pointSize: CGFloat? = nil, forceBold: Bool? = nil) -> UIFont {
@@ -1187,6 +1327,7 @@ private extension RichTextEditorViewController {
             transform(style)
             mutableText.addAttribute(.paragraphStyle, value: style, range: subrange)
         }
+        reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
         editorTextView.typingAttributes[.paragraphStyle] = (mutableText.attribute(.paragraphStyle, at: max(0, range.location), effectiveRange: nil) as? NSParagraphStyle) ?? defaultParagraphStyle()
@@ -1310,14 +1451,19 @@ private extension RichTextEditorViewController {
         toolbarButtons[.outdent]?.isEnabled = currentIndentLevel() > 0
     }
 
-    /// Indent level of the paragraph at the caret, in 24pt indent steps.
+    /// Indent level of the paragraph at the caret, in 24pt indent steps —
+    /// excluding the extra step every list line carries for its base
+    /// left indent (see `reflowBlockSpacing`), so this reports 0 for a
+    /// top-level (non-nested) list item, matching what indent/outdent
+    /// actually control.
     private func currentIndentLevel() -> Int {
         let range = currentParagraphRange()
         guard range.location < editorTextView.attributedText.length,
               let style = editorTextView.attributedText.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle else {
             return 0
         }
-        return max(0, Int((style.headIndent / 24).rounded()))
+        let steps = max(0, Int((style.headIndent / Self.indentStep).rounded()))
+        return currentListMode() != .none ? max(0, steps - 1) : steps
     }
 
     private func setToolbarButton(_ item: ToolbarItem, selected: Bool) {
@@ -1416,10 +1562,27 @@ private extension RichTextEditorViewController {
     }
 
     private func currentHeadingStyle() -> HeadingStyle {
+        if let taggedStyle = inspectedHeadingStyleAttribute() {
+            return taggedStyle
+        }
+
+        // Fallback for content never touched by `applyHeadingStyle` (e.g.
+        // imported HTML) that has no `.zssHeadingStyle` tag: guess from size.
         let font = inspectedFont()
+        let baseFontSize = baseFont.pointSize
         return HeadingStyle.allCases.min { lhs, rhs in
-            abs(lhs.pointSize - font.pointSize) < abs(rhs.pointSize - font.pointSize)
+            abs(lhs.pointSize(baseFontSize: baseFontSize) - font.pointSize) < abs(rhs.pointSize(baseFontSize: baseFontSize) - font.pointSize)
         } ?? .paragraph
+    }
+
+    private func inspectedHeadingStyleAttribute() -> HeadingStyle? {
+        let rawValue: String?
+        if let range = selectionInspectionRange() {
+            rawValue = editorTextView.attributedText.attribute(.zssHeadingStyle, at: range.location, effectiveRange: nil) as? String
+        } else {
+            rawValue = editorTextView.typingAttributes[.zssHeadingStyle] as? String
+        }
+        return rawValue.flatMap(HeadingStyle.init(rawValue:))
     }
 
     func inspectedFont() -> UIFont {
@@ -1481,6 +1644,7 @@ private extension RichTextEditorViewController {
             let marker = listMode == .ordered ? "\(orderedListCounter). " : "• "
             orderedListCounter += listMode == .ordered ? 1 : 0
             replaceSelection(with: NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), selectedOffset: marker.count)
+            reflowEditorParagraphStyles()
             return
         }
 
@@ -1506,6 +1670,7 @@ private extension RichTextEditorViewController {
         }
 
         mutableText.insert(NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), at: range.location)
+        reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + marker.count, length: 0)
         updatePlaceholder()
@@ -1528,8 +1693,22 @@ private extension RichTextEditorViewController {
 
             mutableText.deleteCharacters(in: NSRange(location: adjustedLocation, length: markerRange.length))
             locationDelta += markerRange.length
+
+            // The marker is gone, so this paragraph's stored headIndent still
+            // carries the extra list-base step reflow last added for it;
+            // drop it back out here so reflow reads it back as a plain
+            // (non-list) paragraph at the correct nesting level, not one
+            // level deeper.
+            let freshRange = (mutableText.string as NSString).paragraphRange(for: NSRange(location: adjustedLocation, length: 0))
+            if let existingStyle = mutableText.attribute(.paragraphStyle, at: min(adjustedLocation, max(0, mutableText.length - 1)), effectiveRange: nil) as? NSParagraphStyle,
+               let mutableStyle = existingStyle.mutableCopy() as? NSMutableParagraphStyle {
+                mutableStyle.headIndent = max(0, mutableStyle.headIndent - Self.indentStep)
+                mutableStyle.firstLineHeadIndent = max(0, mutableStyle.firstLineHeadIndent - Self.indentStep)
+                mutableText.addAttribute(.paragraphStyle, value: mutableStyle, range: freshRange)
+            }
         }
 
+        reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location, length: 0)
         updatePlaceholder()
@@ -2297,6 +2476,7 @@ extension RichTextEditorViewController: UITextViewDelegate {
         let insertion = NSAttributedString(string: "\n\(marker)", attributes: editorTextView.typingAttributes)
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         mutableText.replaceCharacters(in: range, with: insertion)
+        reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + insertion.length, length: 0)
         updatePlaceholder()
@@ -2453,9 +2633,16 @@ extension NSAttributedString.Key {
     static let zssMentionItem = NSAttributedString.Key("com.zssinspirededitor.mentionItem")
     static let zssHashtagItem = NSAttributedString.Key("com.zssinspirededitor.hashtagItem")
     static let zssMentionTrigger = NSAttributedString.Key("com.zssinspirededitor.mentionTrigger")
+    /// Stores a `HeadingStyle.rawValue` over a whole paragraph — the source
+    /// of truth for markdown export, since a heading's font size/weight
+    /// alone isn't reliably distinguishable from directly-styled body text
+    /// (H4 in particular has the same 1x size ratio as body text).
+    static let zssHeadingStyle = NSAttributedString.Key("com.zssinspirededitor.headingStyle")
 }
 
-private extension String {
+// Not `private`: reused from RichTextEditorViewController+Markdown.swift's
+// markdown import to classify list lines for `reflowBlockSpacing`.
+extension String {
 
     var hasListMarker: Bool {
         listMarkerRange != nil
@@ -2478,5 +2665,57 @@ private extension String {
 
         let marker = nsString.substring(with: range)
         return Int(marker.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ".", with: ""))
+    }
+}
+
+/// Read-only modal behind `presentMarkdownPreview()` — shows a non-editable
+/// `UITextView` with the already-built preview attributed string. Not public:
+/// host apps trigger it through `presentMarkdownPreview()` rather than
+/// constructing it directly.
+final class MarkdownPreviewViewController: UIViewController {
+
+    private let previewTextView = UITextView()
+    private let previewAttributedText: NSAttributedString
+    private let previewContentInset: UIEdgeInsets
+
+    init(attributedText: NSAttributedString, contentInset: UIEdgeInsets) {
+        self.previewAttributedText = attributedText
+        self.previewContentInset = contentInset
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Preview"
+        view.backgroundColor = .systemBackground
+
+        previewTextView.translatesAutoresizingMaskIntoConstraints = false
+        previewTextView.attributedText = previewAttributedText
+        previewTextView.isEditable = false
+        previewTextView.adjustsFontForContentSizeCategory = true
+        previewTextView.backgroundColor = .systemBackground
+        previewTextView.textContainerInset = previewContentInset
+        view.addSubview(previewTextView)
+
+        NSLayoutConstraint.activate([
+            previewTextView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            previewTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            previewTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            previewTextView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(dismissPreview)
+        )
+    }
+
+    @objc private func dismissPreview() {
+        dismiss(animated: true)
     }
 }

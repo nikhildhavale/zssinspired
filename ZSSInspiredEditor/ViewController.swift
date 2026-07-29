@@ -29,6 +29,43 @@ final class ViewController: UIViewController {
         RichTextEditorViewController.HashtagSuggestion(name: "Honesty", color: .label)
     ]
 
+    /// Exercises every construct this editor's markdown dialect round-trips:
+    /// all six heading levels, every inline style (including combinations),
+    /// a link, an "@"/"#" token, tight vs. loose block spacing (a soft-break
+    /// paragraph, list-to-list transitions, heading margins), nested bullet
+    /// + ordered lists, and the editor's own horizontal-rule syntax (a
+    /// literal dash line — real markdown "---" isn't recognized on import,
+    /// since this editor has no thematic-break support).
+    private static let sampleMarkdown = """
+    # Heading One
+    ## Heading Two
+    ### Heading Three
+    #### Heading Four
+    ##### Heading Five
+    ###### Heading Six
+
+    A plain paragraph with **bold**, *italic*, ***bold italic***, __underline__, and ~~strikethrough~~ all in one line.
+    This second line has no blank line before it, so it should stay tight against the line above (same paragraph, soft break).
+
+    Mentioning @StaticAlice and tagging #helpful, plus a [link](https://example.com) for good measure.
+
+    - First bullet item
+    - Second bullet item with **bold** inside it
+        - Nested bullet one level in
+        - Another nested bullet
+    - Back to top-level bullet
+
+    1. First ordered item
+    2. Second ordered item
+        1. Nested ordered item
+        2. Another nested ordered item
+    3. Back to top-level ordered item
+
+    ────────────
+
+    A closing paragraph after the horizontal rule, to check spacing on the way out of it.
+    """
+
     override func viewDidLoad() {
         super.viewDidLoad()
         installEditor()
@@ -49,11 +86,17 @@ final class ViewController: UIViewController {
                 self.showMarkdownView(self.editor.markdown)
             }
         )
-        toolbarConfiguration.markdownPlusButtonBehavior = .action(
-            RichTextEditorViewController.MarkdownToolbarAction(title: "Markdown", imageName: "doc.text") { [weak self] markdown in
+        toolbarConfiguration.markdownPlusButtonBehavior = .menu([
+            RichTextEditorViewController.MarkdownToolbarAction(title: "Markdown Source", imageName: "doc.text") { [weak self] markdown in
                 self?.showMarkdownView(markdown)
+            },
+            RichTextEditorViewController.MarkdownToolbarAction(title: "Preview", imageName: "eye") { [weak self] markdown in
+                self?.editor.presentMarkdownPreview(markdown: markdown)
+            },
+            RichTextEditorViewController.MarkdownToolbarAction(title: "Load Sample", imageName: "text.badge.checkmark") { [weak self] _ in
+                self?.editor.setMarkdown(Self.sampleMarkdown)
             }
-        )
+        ])
         editor.toolbarConfiguration = toolbarConfiguration
 
         editor.mentionProvider = self

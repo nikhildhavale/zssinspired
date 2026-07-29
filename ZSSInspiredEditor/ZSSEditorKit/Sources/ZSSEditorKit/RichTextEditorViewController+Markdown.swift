@@ -71,8 +71,9 @@ extension RichTextEditorViewController {
                 var formattedText = core
 
                 if !core.isEmpty {
-                    if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont,
-                       let headingPrefix = headingMarkdownPrefix(for: font) {
+                    if let rawHeadingStyle = attributedText.attribute(.zssHeadingStyle, at: index, effectiveRange: nil) as? String,
+                       let headingLevel = HeadingStyle(rawValue: rawHeadingStyle)?.level {
+                        let headingPrefix = String(repeating: "#", count: headingLevel) + " "
                         formattedText = core
                             .components(separatedBy: "\n")
                             .map { $0.isEmpty ? $0 : headingPrefix + $0 }
@@ -95,6 +96,13 @@ extension RichTextEditorViewController {
                         let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
                         var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
 
+                        // A link's own visual underline (`markdownInlineAttributes`/
+                        // `linkTypingAttributes` set it automatically) isn't the
+                        // user asking for "__underline__" markdown — skip the
+                        // wrap for link runs so `[text](url)` round-trips
+                        // instead of drifting to `[__text__](url)` on every export.
+                        let isLink = attributedText.attribute(.link, at: index, effectiveRange: nil) != nil
+
                         if !wrapped.isEmpty {
                             if let font = attributedText.attribute(.font, at: index, effectiveRange: nil) as? UIFont {
                                 let traits = font.fontDescriptor.symbolicTraits
@@ -105,7 +113,7 @@ extension RichTextEditorViewController {
                                     wrapped = "*\(wrapped)*"
                                 }
                             }
-                            if attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
+                            if !isLink, attributedText.attribute(.underlineStyle, at: index, effectiveRange: nil) != nil {
                                 wrapped = "__\(wrapped)__"
                             }
                             if attributedText.attribute(.strikethroughStyle, at: index, effectiveRange: nil) != nil {
@@ -126,49 +134,50 @@ extension RichTextEditorViewController {
             index = effectiveRange.upperBound
         }
 
-        let indentLevels = paragraphIndentLevels(of: attributedText)
+        let indentSteps = paragraphIndentSteps(of: attributedText)
         return markdown
             .components(separatedBy: "\n")
             .enumerated()
             .map { lineIndex, line in
                 var converted = line.replacingOccurrences(of: #"^(\s*)•\s?"#, with: "$1- ", options: .regularExpression)
-                let level = lineIndex < indentLevels.count ? indentLevels[lineIndex] : 0
                 let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
-                if level > 0 && isListLine {
-                    converted = String(repeating: "    ", count: level) + converted
+                if isListLine {
+                    let steps = lineIndex < indentSteps.count ? indentSteps[lineIndex] : 0
+                    // List lines carry one extra indent step for their base
+                    // left indent (see `reflowBlockSpacing`) that isn't part
+                    // of the authored nesting level — drop it back out here.
+                    let level = max(0, steps - 1)
+                    if level > 0 {
+                        converted = String(repeating: "    ", count: level) + converted
+                    }
                 }
                 return converted
             }
             .joined(separator: "\n")
     }
 
-    private func headingMarkdownPrefix(for font: UIFont) -> String? {
-        guard font.fontDescriptor.symbolicTraits.contains(.traitBold) else { return nil }
-        let headingLevels: [(style: HeadingStyle, level: Int)] = [(.h1, 1), (.h2, 2), (.h3, 3), (.h4, 4), (.h5, 5)]
-        for entry in headingLevels where abs(font.pointSize - entry.style.pointSize) < 0.5 {
-            return String(repeating: "#", count: entry.level) + " "
-        }
-        return nil
-    }
-
-    /// Indent level per paragraph (split on "\n"), derived from the 24pt steps applied by indent/outdent.
-    private func paragraphIndentLevels(of attributedString: NSAttributedString) -> [Int] {
+    /// Raw indent step count per paragraph (split on "\n"), i.e. `headIndent`
+    /// in units of `RichTextEditorViewController.indentStep` — for a list
+    /// line this still includes the extra base-indent step `reflowBlockSpacing`
+    /// adds, which callers that care about the *authored* nesting level need
+    /// to subtract back out themselves.
+    private func paragraphIndentSteps(of attributedString: NSAttributedString) -> [Int] {
         let nsString = attributedString.string as NSString
-        var levels: [Int] = []
+        var steps: [Int] = []
         var location = 0
         while true {
             if location < nsString.length,
                let style = attributedString.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle {
-                levels.append(max(0, Int((style.headIndent / 24).rounded())))
+                steps.append(max(0, Int((style.headIndent / Self.indentStep).rounded())))
             } else {
-                levels.append(0)
+                steps.append(0)
             }
             let remaining = NSRange(location: location, length: nsString.length - location)
             let newlineRange = nsString.range(of: "\n", options: [], range: remaining)
             if newlineRange.location == NSNotFound { break }
             location = newlineRange.location + 1
         }
-        return levels
+        return steps
     }
 }
 
@@ -200,11 +209,13 @@ extension RichTextEditorViewController {
 
             let lineFont = headingStyle == .paragraph
                 ? baseFont
-                : fontMatching(baseFont, pointSize: headingStyle.pointSize, forceBold: true)
+                : fontMatching(baseFont, pointSize: headingStyle.pointSize(baseFontSize: baseFont.pointSize), forceBold: true)
             let plainAttributes = markdownInlineAttributes(MarkdownInlineStyle(), lineFont: lineFont)
+            let isOrderedLine = headingStyle == .paragraph && String(remainder).orderedListNumber != nil
+            let isBulletLine = headingStyle == .paragraph && remainder.hasPrefix("- ")
 
             let lineString = NSMutableAttributedString()
-            if headingStyle == .paragraph, remainder.hasPrefix("- ") {
+            if isBulletLine {
                 remainder = remainder.dropFirst(2)
                 lineString.append(NSAttributedString(string: "• ", attributes: plainAttributes))
             }
@@ -214,12 +225,30 @@ extension RichTextEditorViewController {
             }
 
             let paragraphStyle = (defaultParagraphStyle().mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
-            paragraphStyle.firstLineHeadIndent = CGFloat(indentLevel) * 24
-            paragraphStyle.headIndent = CGFloat(indentLevel) * 24
+            // `reflowBlockSpacing` reverse-derives each list line's nesting
+            // level from its stored headIndent by subtracting one step (the
+            // base left indent every list line carries) — seed that same
+            // step here so a freshly imported list starts from a headIndent
+            // reflow will read back correctly, instead of one level shallow.
+            let isListLine = isBulletLine || isOrderedLine
+            let indent = CGFloat(indentLevel + (isListLine ? 1 : 0)) * Self.indentStep
+            paragraphStyle.firstLineHeadIndent = indent
+            paragraphStyle.headIndent = indent
             lineString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: lineString.length))
+            if headingStyle != .paragraph {
+                lineString.addAttribute(.zssHeadingStyle, value: headingStyle.rawValue, range: NSRange(location: 0, length: lineString.length))
+            }
 
             result.append(lineString)
         }
+
+        // The loop above only knows each line's *authored* nesting level (from
+        // its leading 4-space groups); it doesn't yet know which lines are
+        // list items vs. plain paragraphs/headings, or which pairs of lines
+        // continue the same block. Reflow does that classification pass and
+        // fixes up spacing/indent so the editor's preview matches how a
+        // Markdown renderer (e.g. MarkdownUI) spaces the same content.
+        reflowBlockSpacing(in: result)
 
         return result
     }
