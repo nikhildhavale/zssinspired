@@ -1330,7 +1330,11 @@ private extension RichTextEditorViewController {
         reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
-        editorTextView.typingAttributes[.paragraphStyle] = (mutableText.attribute(.paragraphStyle, at: max(0, range.location), effectiveRange: nil) as? NSParagraphStyle) ?? defaultParagraphStyle()
+        // `.attribute(at:)` throws NSRangeException for any index into an
+        // empty string — guard the length, not just clamp the location.
+        editorTextView.typingAttributes[.paragraphStyle] = (range.location < mutableText.length
+            ? mutableText.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle
+            : nil) ?? defaultParagraphStyle()
         updateToolbarSelectionState()
     }
 
