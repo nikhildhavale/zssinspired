@@ -106,7 +106,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
 - Bold, italic, underline, and strikethrough
 - Subscript and superscript
-- Paragraph and H1–H6 heading styles
+- Paragraph and H1–H6 heading styles, sized proportionally to the
+  configured body font (2x/1.5x/1.25x/1x/0.875x/0.85x), matching the scale
+  [MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui)'s GitHub
+  theme uses
 - Left, center, right, and justified alignment
 - Ordered and unordered lists
 - Indent and outdent
@@ -127,6 +130,30 @@ let markdown = editor.markdown  // Get markdown representation
 ```
 
 The editor automatically converts formatting (bold, italic, underline, strikethrough, links) to their Markdown equivalents.
+
+In markdown mode, paragraph spacing and list indent are tuned to match how
+[MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui) (used as
+the styling reference — not a dependency of this package) spaces the same
+content: lines continuing the same list or the same soft-wrapped paragraph
+stay tight, while a real block boundary (entering/leaving a list, switching
+list type, a heading) gets the larger gap MarkdownUI's GitHub theme gives
+sibling blocks — so what you see while editing matches what gets rendered
+elsewhere.
+
+## Markdown Preview
+
+Show a read-only preview of how the current content will actually render,
+built from the editor's own attributed-string pipeline (the same
+block-spacing/indent logic used while editing) rather than pulling in
+MarkdownUI or another third-party renderer as a dependency:
+
+```swift
+editor.presentMarkdownPreview(markdown: editor.markdown)
+```
+
+Not wired to any built-in toolbar button — call it from a host-supplied
+action (e.g. a `markdownPlusButtonBehavior` entry) to add a "Preview"
+affordance where it makes sense for your app.
 
 ## Setting Content, Mode, Placeholder, and Focus
 
