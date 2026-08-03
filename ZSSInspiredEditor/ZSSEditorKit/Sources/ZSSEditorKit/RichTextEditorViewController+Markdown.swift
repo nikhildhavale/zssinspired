@@ -139,9 +139,9 @@ extension RichTextEditorViewController {
             .components(separatedBy: "\n")
             .enumerated()
             .map { lineIndex, line in
-                // Both marker kinds are written with `Self.listMarkerGap` (two
-                // spaces) in the editor for a wider bullet/number-to-text
-                // gap than plain prose; collapse that back down to a single
+                // Both marker kinds are written with `listMarkerGap` (host-
+                // configurable via `toolbarConfiguration.listMarkerSpacing`)
+                // in the editor; collapse that back down to a single
                 // canonical space here so stored markdown doesn't carry the
                 // editor's presentation-only spacing.
                 var converted = line.replacingOccurrences(of: #"^(\s*)•\s*"#, with: "$1- ", options: .regularExpression)
@@ -223,7 +223,7 @@ extension RichTextEditorViewController {
             let lineString = NSMutableAttributedString()
             if isBulletLine {
                 remainder = remainder.dropFirst(2)
-                lineString.append(NSAttributedString(string: "•\(Self.listMarkerGap)", attributes: plainAttributes))
+                lineString.append(NSAttributedString(string: "•\(listMarkerGap)", attributes: plainAttributes))
             }
             lineString.append(markdownInlineAttributedString(from: remainder, style: MarkdownInlineStyle(), lineFont: lineFont))
             if index < lines.count - 1 {

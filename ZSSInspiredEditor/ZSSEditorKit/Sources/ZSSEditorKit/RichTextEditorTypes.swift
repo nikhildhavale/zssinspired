@@ -303,6 +303,14 @@ extension RichTextEditorViewController {
         /// different font (e.g. `.systemFont(ofSize: 15)`) to change the
         /// editor's size, weight, or family.
         public var bodyFont: UIFont
+        /// Number of plain space characters between a list marker ("•"/"N.")
+        /// and the text that follows it, both for newly-typed/continued
+        /// markers and ones read back from markdown. Defaults to 2; pass 1
+        /// to match a tighter design spec, or more for extra breathing room.
+        /// Only affects markers created from this point on — existing
+        /// content already in the editor keeps whatever gap it was written
+        /// with.
+        public var listMarkerSpacing: Int
 
         public init(
             contentMode: ContentMode = .richText,
@@ -313,6 +321,7 @@ extension RichTextEditorViewController {
             toolbarHeight: CGFloat = 58,
             buttonSize: CGFloat = 38,
             bodyFont: UIFont = .systemFont(ofSize: 17),
+            listMarkerSpacing: Int = 2,
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -336,6 +345,7 @@ extension RichTextEditorViewController {
             self.toolbarHeight = toolbarHeight
             self.buttonSize = buttonSize
             self.bodyFont = bodyFont
+            self.listMarkerSpacing = listMarkerSpacing
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }

@@ -1065,10 +1065,11 @@ extension RichTextEditorViewController {
     static let indentStep: CGFloat = 24
 
     /// Whitespace between a list marker ("•"/"N.") and its text, both for
-    /// newly-typed markers and ones read back from markdown. Two spaces
-    /// (rather than one) gives the bullet/number more visual breathing room
-    /// before the text starts.
-    static let listMarkerGap = "  "
+    /// newly-typed markers and ones read back from markdown. Width is
+    /// host-configurable via `toolbarConfiguration.listMarkerSpacing`.
+    var listMarkerGap: String {
+        String(repeating: " ", count: max(0, toolbarConfiguration.listMarkerSpacing))
+    }
 
     /// Paragraph spacing after a block that isn't immediately continued by
     /// a sibling of the same kind — mirrors the margin a Markdown renderer
@@ -1708,7 +1709,7 @@ private extension RichTextEditorViewController {
         let range = currentParagraphRange()
         let nsText = editorTextView.text as NSString
         if nsText.length == 0 {
-            let marker = listMode == .ordered ? "\(orderedListCounter).\(Self.listMarkerGap)" : "•\(Self.listMarkerGap)"
+            let marker = listMode == .ordered ? "\(orderedListCounter).\(listMarkerGap)" : "•\(listMarkerGap)"
             orderedListCounter += listMode == .ordered ? 1 : 0
             let continuingAttributes = editorTextView.typingAttributes
             replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), selectedOffset: marker.count)
@@ -1730,9 +1731,9 @@ private extension RichTextEditorViewController {
         let marker: String
         switch listMode {
         case .unordered:
-            marker = "•\(Self.listMarkerGap)"
+            marker = "•\(listMarkerGap)"
         case .ordered:
-            marker = "\(orderedListCounter).\(Self.listMarkerGap)"
+            marker = "\(orderedListCounter).\(listMarkerGap)"
             orderedListCounter += 1
         case .none:
             return
@@ -1825,19 +1826,19 @@ private extension RichTextEditorViewController {
         switch listMode {
         case .none:
             if hasBullet {
-                return "•\(Self.listMarkerGap)"
+                return "•\(listMarkerGap)"
             }
             if let number = previousLine.orderedListNumber {
-                return "\(number + 1).\(Self.listMarkerGap)"
+                return "\(number + 1).\(listMarkerGap)"
             }
             return nil
         case .unordered:
-            return hasBullet ? "•\(Self.listMarkerGap)" : nil
+            return hasBullet ? "•\(listMarkerGap)" : nil
         case .ordered:
             guard hasNumber else { return nil }
             let nextNumber = previousLine.orderedListNumber.map { $0 + 1 } ?? orderedListCounter
             orderedListCounter = nextNumber + 1
-            return "\(nextNumber).\(Self.listMarkerGap)"
+            return "\(nextNumber).\(listMarkerGap)"
         }
     }
 
