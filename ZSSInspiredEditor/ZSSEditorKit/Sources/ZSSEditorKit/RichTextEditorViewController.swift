@@ -1091,11 +1091,11 @@ extension RichTextEditorViewController {
         var nestingLevel = 0
     }
 
-    private func lineBlockInfo(for line: String, existingParagraphStyle: NSParagraphStyle?, isHeading: Bool) -> LineBlockInfo {
+    private func lineBlockInfo(for line: String, existingParagraphStyle: NSParagraphStyle?, isHeading: Bool, startsWithBulletAttachment: Bool) -> LineBlockInfo {
         var info = LineBlockInfo()
         let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
         info.isHeading = isHeading
-        info.isList = !info.isHeading && hasListMarker(trimmedLine)
+        info.isList = !info.isHeading && hasListMarker(trimmedLine, startsWithBulletAttachment: startsWithBulletAttachment)
         info.isOrderedList = info.isList && trimmedLine.orderedListNumber != nil
 
         let rawHeadIndent = existingParagraphStyle?.headIndent ?? 0
@@ -1144,7 +1144,9 @@ extension RichTextEditorViewController {
             // signal here, not a text pattern.
             let isHeading = range.location < attributedString.length
                 && attributedString.attribute(.zssHeadingStyle, at: range.location, effectiveRange: nil) != nil
-            return lineBlockInfo(for: line, existingParagraphStyle: existingStyle, isHeading: isHeading)
+            let startsWithBulletAttachment = range.location < attributedString.length
+                && attributedString.attribute(.zssBulletMarkerAttachment, at: range.location, effectiveRange: nil) != nil
+            return lineBlockInfo(for: line, existingParagraphStyle: existingStyle, isHeading: isHeading, startsWithBulletAttachment: startsWithBulletAttachment)
         }
 
         for (index, range) in ranges.enumerated() {
@@ -1193,41 +1195,59 @@ extension RichTextEditorViewController {
         return UIFont(descriptor: descriptor, size: pointSize ?? font.pointSize)
     }
 
-    /// Every glyph currently recognized as a bullet marker: the legacy
-    /// presets (`String.bulletGlyphs`, kept so content typed under a
-    /// previously configured glyph still round-trips) plus whatever
-    /// `toolbarConfiguration.bulletMarkerGlyph` is set to right now — so a
-    /// host app can configure literally any single `Character` and have
-    /// list continuation, selection, and markdown import/export all
-    /// recognize it, not just one of the legacy presets.
-    var recognizedBulletGlyphs: Set<Character> {
-        String.bulletGlyphs.union([toolbarConfiguration.bulletMarkerGlyph])
+    /// Matches MarkdownUI's default (GitHub theme) bulleted-list marker: the
+    /// "circle.fill" SF Symbol at a third of the line's font size
+    /// (`ListBullet`: `.font(.system(size: round(fontSize / 3)))`),
+    /// vertically centered on the font's cap height the way a small inline
+    /// icon reads next to text. Tagged `.zssBulletMarkerAttachment` so it's
+    /// recognized as a marker (not a user-inserted image) elsewhere.
+    func bulletMarkerAttachmentAttributedString(pointSize: CGFloat, forceBold: Bool) -> NSAttributedString {
+        let diameter = (pointSize / 3).rounded()
+        let attachment = NSTextAttachment()
+        let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: diameter, weight: .regular)
+        // `.alwaysTemplate` + a `.foregroundColor` attribute (not
+        // `.alwaysOriginal`/`withTintColor`) so TextKit tints the image
+        // dynamically from `.label`, matching a light/dark mode change
+        // instead of baking in whichever color was active when this marker
+        // was created.
+        let image = UIImage(systemName: "circle.fill", withConfiguration: symbolConfiguration)?
+            .withRenderingMode(.alwaysTemplate)
+        attachment.image = image
+        let imageSize = image?.size ?? CGSize(width: diameter, height: diameter)
+        let capHeight = fontMatching(baseFont, pointSize: pointSize, forceBold: forceBold).capHeight
+        attachment.bounds = CGRect(x: 0, y: (capHeight - imageSize.height) / 2, width: imageSize.width, height: imageSize.height)
+
+        let result = NSMutableAttributedString(attachment: attachment)
+        let fullRange = NSRange(location: 0, length: result.length)
+        result.addAttribute(.zssBulletMarkerAttachment, value: true, range: fullRange)
+        result.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
+        return result
     }
 
-    /// `recognizedBulletGlyphs` as a regex character class, with the few
-    /// characters that are special inside `[...]` escaped so an unusual
-    /// configured glyph (e.g. "]" or "-") can't corrupt the pattern.
-    var recognizedBulletGlyphPattern: String {
-        let escaped = recognizedBulletGlyphs.map { character -> String in
-            switch character {
-            case "\\", "]", "^", "-":
-                return "\\\(character)"
-            default:
-                return String(character)
-            }
-        }
-        return "[\(escaped.joined())]"
+    /// Whether `line` begins with a bullet marker: either the current
+    /// `.zssBulletMarkerAttachment` circle image (which a plain `String`
+    /// can't detect on its own — every attachment looks like the same
+    /// U+FFFC placeholder character — so callers with attributed-text
+    /// access pass `startsWithBulletAttachment` in) or one of the legacy
+    /// text glyphs (`String.bulletGlyphs`) content typed under a previous
+    /// version of this library may still contain.
+    func hasListMarker(_ line: String, startsWithBulletAttachment: Bool) -> Bool {
+        listMarkerRange(in: line, startsWithBulletAttachment: startsWithBulletAttachment) != nil
     }
 
-    func hasListMarker(_ line: String) -> Bool {
-        listMarkerRange(in: line) != nil
-    }
-
-    func listMarkerRange(in line: String) -> NSRange? {
+    func listMarkerRange(in line: String, startsWithBulletAttachment: Bool) -> NSRange? {
         let nsString = line as NSString
-        let bulletRange = nsString.range(of: "^\\s*\(recognizedBulletGlyphPattern)\\s*", options: .regularExpression)
-        if bulletRange.location != NSNotFound {
-            return bulletRange
+        if startsWithBulletAttachment {
+            var end = 1
+            while end < nsString.length, nsString.character(at: end) == 0x20 {
+                end += 1
+            }
+            return NSRange(location: 0, length: end)
+        }
+
+        let legacyBulletRange = nsString.range(of: "^\\s*\(String.bulletGlyphPattern)\\s*", options: .regularExpression)
+        if legacyBulletRange.location != NSNotFound {
+            return legacyBulletRange
         }
 
         let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
@@ -1370,7 +1390,8 @@ private extension RichTextEditorViewController {
         for paragraphRange in paragraphRanges(in: range, textLength: textLength) {
             guard paragraphRange.location < textLength else { continue }
             let paragraph = text.substring(with: paragraphRange)
-            guard let markerRange = listMarkerRange(in: paragraph) else { continue }
+            let startsWithBulletAttachment = editorTextView.attributedText.attribute(.zssBulletMarkerAttachment, at: paragraphRange.location, effectiveRange: nil) != nil
+            guard let markerRange = listMarkerRange(in: paragraph, startsWithBulletAttachment: startsWithBulletAttachment) else { continue }
             let absoluteMarkerRange = NSRange(location: paragraphRange.location + markerRange.location, length: markerRange.length)
             if let intersection = absoluteMarkerRange.intersection(range) {
                 markerRanges.append(intersection)
@@ -1702,8 +1723,11 @@ private extension RichTextEditorViewController {
             return listMode
         }
 
+        if editorTextView.attributedText.attribute(.zssBulletMarkerAttachment, at: paragraphRange.location, effectiveRange: nil) != nil {
+            return .unordered
+        }
         let paragraph = (editorTextView.text as NSString).substring(with: paragraphRange)
-        if let first = paragraph.trimmingCharacters(in: .whitespaces).first, recognizedBulletGlyphs.contains(first) {
+        if let first = paragraph.trimmingCharacters(in: .whitespaces).first, String.bulletGlyphs.contains(first) {
             return .unordered
         }
         if paragraph.orderedListNumber != nil {
@@ -1746,14 +1770,31 @@ private extension RichTextEditorViewController {
         ]
     }
 
+    /// The full unordered-marker run inserted while live-typing: the bullet
+    /// attachment sized/styled for the current paragraph (heading-aware,
+    /// like `plainListMarkerAttributes`) followed by `listMarkerGap`.
+    func unorderedMarkerAttributedString() -> NSAttributedString {
+        let headingStyle = currentHeadingStyle()
+        let pointSize = headingStyle.pointSize(baseFontSize: baseFont.pointSize)
+        let result = NSMutableAttributedString(attributedString: bulletMarkerAttachmentAttributedString(pointSize: pointSize, forceBold: headingStyle.isBold))
+        result.addAttribute(.paragraphStyle, value: editorTextView.typingAttributes[.paragraphStyle] ?? defaultParagraphStyle(), range: NSRange(location: 0, length: result.length))
+        result.append(NSAttributedString(string: listMarkerGap, attributes: plainListMarkerAttributes()))
+        return result
+    }
+
     func applyListMarkersToCurrentParagraphs() {
         let range = currentParagraphRange()
         let nsText = editorTextView.text as NSString
         if nsText.length == 0 {
-            let marker = listMode == .ordered ? "\(orderedListCounter).\(listMarkerGap)" : "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
-            orderedListCounter += listMode == .ordered ? 1 : 0
+            let marker: NSAttributedString
+            if listMode == .ordered {
+                marker = NSAttributedString(string: "\(orderedListCounter).\(listMarkerGap)", attributes: plainListMarkerAttributes())
+                orderedListCounter += 1
+            } else {
+                marker = unorderedMarkerAttributedString()
+            }
             let continuingAttributes = editorTextView.typingAttributes
-            replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), selectedOffset: marker.count)
+            replaceSelection(with: marker, selectedOffset: marker.length)
             reflowEditorParagraphStyles()
             editorTextView.typingAttributes = continuingAttributes
             return
@@ -1763,28 +1804,30 @@ private extension RichTextEditorViewController {
         guard range.location >= 0 && range.location + range.length <= mutableText.string.count else { return }
 
         let paragraph = (mutableText.string as NSString).substring(with: range)
+        let startsWithBulletAttachment = range.location < mutableText.length
+            && mutableText.attribute(.zssBulletMarkerAttachment, at: range.location, effectiveRange: nil) != nil
 
-        if hasListMarker(paragraph) {
+        if hasListMarker(paragraph, startsWithBulletAttachment: startsWithBulletAttachment) {
             updateToolbarSelectionState()
             return
         }
 
-        let marker: String
+        let marker: NSAttributedString
         switch listMode {
         case .unordered:
-            marker = "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
+            marker = unorderedMarkerAttributedString()
         case .ordered:
-            marker = "\(orderedListCounter).\(listMarkerGap)"
+            marker = NSAttributedString(string: "\(orderedListCounter).\(listMarkerGap)", attributes: plainListMarkerAttributes())
             orderedListCounter += 1
         case .none:
             return
         }
 
         let continuingAttributes = editorTextView.typingAttributes
-        mutableText.insert(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), at: range.location)
+        mutableText.insert(marker, at: range.location)
         reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
-        editorTextView.selectedRange = NSRange(location: range.location + marker.count, length: 0)
+        editorTextView.selectedRange = NSRange(location: range.location + marker.length, length: 0)
         editorTextView.typingAttributes = continuingAttributes
         updatePlaceholder()
         updateToolbarSelectionState()
@@ -1802,7 +1845,8 @@ private extension RichTextEditorViewController {
 
             let adjustedRange = NSRange(location: adjustedLocation, length: min(paragraphRange.length, mutableText.length - adjustedLocation))
             let paragraph = (mutableText.string as NSString).substring(with: adjustedRange)
-            guard let markerRange = listMarkerRange(in: paragraph) else { continue }
+            let startsWithBulletAttachment = mutableText.attribute(.zssBulletMarkerAttachment, at: adjustedLocation, effectiveRange: nil) != nil
+            guard let markerRange = listMarkerRange(in: paragraph, startsWithBulletAttachment: startsWithBulletAttachment) else { continue }
 
             mutableText.deleteCharacters(in: NSRange(location: adjustedLocation, length: markerRange.length))
             locationDelta += markerRange.length
@@ -1859,33 +1903,31 @@ private extension RichTextEditorViewController {
         return (numbers.last ?? 0) + 1
     }
 
-    func continuationMarker(afterPreviousLine previousLine: String) -> String? {
-        let trimmedPrevious = previousLine.trimmingCharacters(in: .whitespaces)
-        let hasBullet = trimmedPrevious.first.map { recognizedBulletGlyphs.contains($0) } ?? false
+    func continuationMarker(afterPreviousLine previousLine: String, hasBulletMarker: Bool) -> NSAttributedString? {
         let hasNumber = previousLine.orderedListNumber != nil
 
         switch listMode {
         case .none:
-            if hasBullet {
-                return "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
+            if hasBulletMarker {
+                return unorderedMarkerAttributedString()
             }
             if let number = previousLine.orderedListNumber {
-                return "\(number + 1).\(listMarkerGap)"
+                return NSAttributedString(string: "\(number + 1).\(listMarkerGap)", attributes: plainListMarkerAttributes())
             }
             return nil
         case .unordered:
-            return hasBullet ? "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)" : nil
+            return hasBulletMarker ? unorderedMarkerAttributedString() : nil
         case .ordered:
             guard hasNumber else { return nil }
             let nextNumber = previousLine.orderedListNumber.map { $0 + 1 } ?? orderedListCounter
             orderedListCounter = nextNumber + 1
-            return "\(nextNumber).\(listMarkerGap)"
+            return NSAttributedString(string: "\(nextNumber).\(listMarkerGap)", attributes: plainListMarkerAttributes())
         }
     }
 
-    func shouldEndList(afterPreviousLine previousLine: String) -> Bool {
+    func shouldEndList(afterPreviousLine previousLine: String, hasBulletMarker: Bool) -> Bool {
         let trimmed = previousLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count == 1, let only = trimmed.first, recognizedBulletGlyphs.contains(only) {
+        if hasBulletMarker, trimmed.count == 1 {
             return true
         }
         return trimmed.range(of: #"^\d+\.$"#, options: .regularExpression) != nil
@@ -1898,7 +1940,10 @@ private extension RichTextEditorViewController {
 
         let previousParagraph = text.paragraphRange(for: NSRange(location: selection.location - 1, length: 0))
         let previousLine = text.substring(with: previousParagraph)
-        guard shouldEndList(afterPreviousLine: previousLine), let markerRange = listMarkerRange(in: previousLine) else {
+        let startsWithBulletAttachment = previousParagraph.location < editorTextView.attributedText.length
+            && editorTextView.attributedText.attribute(.zssBulletMarkerAttachment, at: previousParagraph.location, effectiveRange: nil) != nil
+        guard shouldEndList(afterPreviousLine: previousLine, hasBulletMarker: startsWithBulletAttachment),
+              let markerRange = listMarkerRange(in: previousLine, startsWithBulletAttachment: startsWithBulletAttachment) else {
             return false
         }
 
@@ -2584,14 +2629,16 @@ extension RichTextEditorViewController: UITextViewDelegate {
         let nsText = editorTextView.text as NSString
         let previousParagraphRange = nsText.paragraphRange(for: NSRange(location: max(0, range.location - 1), length: 0))
         let previousLine = nsText.substring(with: previousParagraphRange)
+        let startsWithBulletAttachment = previousParagraphRange.location < editorTextView.attributedText.length
+            && editorTextView.attributedText.attribute(.zssBulletMarkerAttachment, at: previousParagraphRange.location, effectiveRange: nil) != nil
 
-        guard let marker = continuationMarker(afterPreviousLine: previousLine) else {
+        guard let marker = continuationMarker(afterPreviousLine: previousLine, hasBulletMarker: startsWithBulletAttachment) else {
             return true
         }
 
         let continuingAttributes = editorTextView.typingAttributes
         let insertion = NSMutableAttributedString(string: "\n", attributes: continuingAttributes)
-        insertion.append(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()))
+        insertion.append(marker)
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         mutableText.replaceCharacters(in: range, with: insertion)
         reflowBlockSpacing(in: mutableText)
@@ -2757,19 +2804,26 @@ extension NSAttributedString.Key {
     /// alone isn't reliably distinguishable from directly-styled body text
     /// (H4 in particular has the same 1x size ratio as body text).
     static let zssHeadingStyle = NSAttributedString.Key("com.zssinspirededitor.headingStyle")
+    /// Marks the `NSTextAttachment` character of an unordered list's bullet
+    /// marker, distinguishing it from a host-inserted image attachment
+    /// (`insertImagePlaceholder()`) — both are the same U+FFFC placeholder
+    /// in the plain string, so this is the only reliable way to tell them
+    /// apart for list-continuation logic and markdown export.
+    static let zssBulletMarkerAttachment = NSAttributedString.Key("com.zssinspirededitor.bulletMarkerAttachment")
 }
 
 // Not `private`: reused from RichTextEditorViewController+Markdown.swift's
 // markdown import to classify list lines for `reflowBlockSpacing`.
 extension String {
 
-    /// Bullet glyphs recognized regardless of the currently configured
-    /// `ToolbarConfiguration.bulletMarkerGlyph` — kept so content typed
-    /// under an older configured glyph still round-trips. See
-    /// `RichTextEditorViewController.recognizedBulletGlyphs`, which unions
-    /// this with whatever glyph is configured right now; that instance-aware
-    /// set (not this one alone) is what marker-detection call sites use.
+    /// Legacy bullet-marker text glyphs from earlier versions of this
+    /// library (before markers were rendered as a `.zssBulletMarkerAttachment`
+    /// image) — kept so content typed under one of them still round-trips.
+    /// Also what markdown export emits as the intermediate placeholder
+    /// character for the current attachment-based marker before normalizing
+    /// it to canonical "- " (see `attributedStringToMarkdown`).
     static let bulletGlyphs: Set<Character> = ["•", "●", "⬤"]
+    static let bulletGlyphPattern = "[\(bulletGlyphs.map(String.init).joined())]"
 
     var orderedListNumber: Int? {
         let nsString = self as NSString

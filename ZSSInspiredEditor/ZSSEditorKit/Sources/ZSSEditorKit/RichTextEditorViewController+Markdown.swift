@@ -33,6 +33,13 @@ extension RichTextEditorViewController {
                 }
             } else if let hashtag = attributedText.attribute(.zssHashtagItem, at: index, effectiveRange: &effectiveRange) as? any HashtagItem {
                 markdown += "\(MentionTrigger.hash.symbol)\(hashtag.hashtagDisplayName)"
+            } else if attributedText.attribute(.zssBulletMarkerAttachment, at: index, effectiveRange: &effectiveRange) != nil {
+                // A placeholder for the bullet-normalization pass below
+                // (which matches `String.bulletGlyphPattern`), not a
+                // character that ends up in the stored markdown — that pass
+                // collapses it (plus the marker's trailing `listMarkerGap`)
+                // down to the canonical "- ".
+                markdown += "•"
             } else if attributedText.attribute(.attachment, at: index, effectiveRange: &effectiveRange) is NSTextAttachment {
                 markdown += "[image]"
             } else {
@@ -91,7 +98,7 @@ extension RichTextEditorViewController {
                         // recognized as a list marker by the bullet/number
                         // post-processing below, which only matches at the
                         // very start of the line.
-                        let leadingMarkerRange = core.range(of: "^\\s*(\(recognizedBulletGlyphPattern)|\\d+\\.)\\s*", options: .regularExpression)
+                        let leadingMarkerRange = core.range(of: "^\\s*(\(String.bulletGlyphPattern)|\\d+\\.)\\s*", options: .regularExpression)
                         let leadingSpace = leadingMarkerRange.map { String(core[$0]) } ?? String(core.prefix(while: { $0 == " " }))
                         let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
                         var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
@@ -144,7 +151,7 @@ extension RichTextEditorViewController {
                 // in the editor; collapse that back down to a single
                 // canonical space here so stored markdown doesn't carry the
                 // editor's presentation-only spacing.
-                var converted = line.replacingOccurrences(of: "^(\\s*)\(recognizedBulletGlyphPattern)\\s*", with: "$1- ", options: .regularExpression)
+                var converted = line.replacingOccurrences(of: "^(\\s*)\(String.bulletGlyphPattern)\\s*", with: "$1- ", options: .regularExpression)
                 converted = converted.replacingOccurrences(of: #"^(\s*)(\d+)\.\s*"#, with: "$1$2. ", options: .regularExpression)
                 let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
                 if isListLine {
@@ -223,7 +230,8 @@ extension RichTextEditorViewController {
             let lineString = NSMutableAttributedString()
             if isBulletLine {
                 remainder = remainder.dropFirst(2)
-                lineString.append(NSAttributedString(string: "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)", attributes: plainAttributes))
+                lineString.append(bulletMarkerAttachmentAttributedString(pointSize: lineFont.pointSize, forceBold: false))
+                lineString.append(NSAttributedString(string: listMarkerGap, attributes: plainAttributes))
             }
             lineString.append(markdownInlineAttributedString(from: remainder, style: MarkdownInlineStyle(), lineFont: lineFont))
             if index < lines.count - 1 {
