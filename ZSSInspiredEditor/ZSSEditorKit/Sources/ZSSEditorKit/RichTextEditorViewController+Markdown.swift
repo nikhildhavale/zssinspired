@@ -91,7 +91,7 @@ extension RichTextEditorViewController {
                         // recognized as a list marker by the bullet/number
                         // post-processing below, which only matches at the
                         // very start of the line.
-                        let leadingMarkerRange = core.range(of: #"^\s*(•|\d+\.)\s?"#, options: .regularExpression)
+                        let leadingMarkerRange = core.range(of: #"^\s*(•|\d+\.)\s*"#, options: .regularExpression)
                         let leadingSpace = leadingMarkerRange.map { String(core[$0]) } ?? String(core.prefix(while: { $0 == " " }))
                         let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
                         var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
@@ -139,7 +139,13 @@ extension RichTextEditorViewController {
             .components(separatedBy: "\n")
             .enumerated()
             .map { lineIndex, line in
-                var converted = line.replacingOccurrences(of: #"^(\s*)•\s?"#, with: "$1- ", options: .regularExpression)
+                // Both marker kinds are written with `Self.listMarkerGap` (two
+                // spaces) in the editor for a wider bullet/number-to-text
+                // gap than plain prose; collapse that back down to a single
+                // canonical space here so stored markdown doesn't carry the
+                // editor's presentation-only spacing.
+                var converted = line.replacingOccurrences(of: #"^(\s*)•\s*"#, with: "$1- ", options: .regularExpression)
+                converted = converted.replacingOccurrences(of: #"^(\s*)(\d+)\.\s*"#, with: "$1$2. ", options: .regularExpression)
                 let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
                 if isListLine {
                     let steps = lineIndex < indentSteps.count ? indentSteps[lineIndex] : 0
@@ -217,7 +223,7 @@ extension RichTextEditorViewController {
             let lineString = NSMutableAttributedString()
             if isBulletLine {
                 remainder = remainder.dropFirst(2)
-                lineString.append(NSAttributedString(string: "• ", attributes: plainAttributes))
+                lineString.append(NSAttributedString(string: "•\(Self.listMarkerGap)", attributes: plainAttributes))
             }
             lineString.append(markdownInlineAttributedString(from: remainder, style: MarkdownInlineStyle(), lineFont: lineFont))
             if index < lines.count - 1 {

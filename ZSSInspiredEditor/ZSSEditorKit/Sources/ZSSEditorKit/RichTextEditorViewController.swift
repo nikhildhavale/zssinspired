@@ -1064,6 +1064,12 @@ extension RichTextEditorViewController {
     /// don't have.
     static let indentStep: CGFloat = 24
 
+    /// Whitespace between a list marker ("•"/"N.") and its text, both for
+    /// newly-typed markers and ones read back from markdown. Two spaces
+    /// (rather than one) gives the bullet/number more visual breathing room
+    /// before the text starts.
+    static let listMarkerGap = "  "
+
     /// Paragraph spacing after a block that isn't immediately continued by
     /// a sibling of the same kind — mirrors the margin a Markdown renderer
     /// puts between sibling blocks (a paragraph followed by a list, two
@@ -1308,10 +1314,11 @@ private extension RichTextEditorViewController {
     }
 
     /// Splits `range` into the sub-ranges that don't touch any list marker
-    /// ("• "/"N. ") it overlaps. A selection that happens to span back over
-    /// a marker (e.g. selecting a whole list item before tapping Bold/
-    /// Italic/etc.) must not restyle the marker itself — it stays plain
-    /// regardless of what the user selects, same as at insertion time.
+    /// ("•"/"N." plus `listMarkerGap`) it overlaps. A selection that happens
+    /// to span back over a marker (e.g. selecting a whole list item before
+    /// tapping Bold/Italic/etc.) must not restyle the marker itself — it
+    /// stays plain regardless of what the user selects, same as at
+    /// insertion time.
     func rangesExcludingListMarkers(from range: NSRange) -> [NSRange] {
         let textLength = editorTextView.text.count
         guard range.length > 0, textLength > 0 else { return [range] }
@@ -1681,7 +1688,7 @@ private extension RichTextEditorViewController {
 
 private extension RichTextEditorViewController {
 
-    /// Attributes for a "• "/"N. " list marker: the paragraph's plain
+    /// Attributes for a "•"/"N." list marker: the paragraph's plain
     /// heading-aware font (mirrors `markdownToAttributedString`'s
     /// `plainAttributes` pattern) rather than the live typing attributes, so
     /// the marker doesn't pick up whatever bold/italic/etc. is active at the
@@ -1701,7 +1708,7 @@ private extension RichTextEditorViewController {
         let range = currentParagraphRange()
         let nsText = editorTextView.text as NSString
         if nsText.length == 0 {
-            let marker = listMode == .ordered ? "\(orderedListCounter). " : "• "
+            let marker = listMode == .ordered ? "\(orderedListCounter).\(Self.listMarkerGap)" : "•\(Self.listMarkerGap)"
             orderedListCounter += listMode == .ordered ? 1 : 0
             let continuingAttributes = editorTextView.typingAttributes
             replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), selectedOffset: marker.count)
@@ -1723,9 +1730,9 @@ private extension RichTextEditorViewController {
         let marker: String
         switch listMode {
         case .unordered:
-            marker = "• "
+            marker = "•\(Self.listMarkerGap)"
         case .ordered:
-            marker = "\(orderedListCounter). "
+            marker = "\(orderedListCounter).\(Self.listMarkerGap)"
             orderedListCounter += 1
         case .none:
             return
@@ -1818,19 +1825,19 @@ private extension RichTextEditorViewController {
         switch listMode {
         case .none:
             if hasBullet {
-                return "• "
+                return "•\(Self.listMarkerGap)"
             }
             if let number = previousLine.orderedListNumber {
-                return "\(number + 1). "
+                return "\(number + 1).\(Self.listMarkerGap)"
             }
             return nil
         case .unordered:
-            return hasBullet ? "• " : nil
+            return hasBullet ? "•\(Self.listMarkerGap)" : nil
         case .ordered:
             guard hasNumber else { return nil }
             let nextNumber = previousLine.orderedListNumber.map { $0 + 1 } ?? orderedListCounter
             orderedListCounter = nextNumber + 1
-            return "\(nextNumber). "
+            return "\(nextNumber).\(Self.listMarkerGap)"
         }
     }
 
@@ -2717,8 +2724,8 @@ extension String {
 
     var listMarkerRange: NSRange? {
         let nsString = self as NSString
-        if range(of: #"^\s*•\s?"#, options: .regularExpression) != nil {
-            return nsString.range(of: #"^\s*•\s?"#, options: .regularExpression)
+        if range(of: #"^\s*•\s*"#, options: .regularExpression) != nil {
+            return nsString.range(of: #"^\s*•\s*"#, options: .regularExpression)
         }
 
         let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
