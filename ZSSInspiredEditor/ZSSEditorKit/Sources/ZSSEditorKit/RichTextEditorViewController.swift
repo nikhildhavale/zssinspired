@@ -1205,6 +1205,20 @@ extension RichTextEditorViewController {
         return UIFont(descriptor: descriptor, size: pointSize ?? font.pointSize)
     }
 
+    /// A "•" glyph sits vertically centered around its font's cap height,
+    /// which — like the rest of the glyph — grows with `bulletMarkerScale`.
+    /// Since the marker shares its baseline with the surrounding (unscaled)
+    /// text, a bigger cap height alone shifts the dot's visual center upward
+    /// relative to the text next to it. Shift it back down by half that
+    /// growth so the enlarged dot stays centered where the normal-size one
+    /// would have been.
+    func bulletBaselineOffset(normalPointSize: CGFloat, scaledPointSize: CGFloat, forceBold: Bool) -> CGFloat {
+        guard scaledPointSize != normalPointSize else { return 0 }
+        let normalFont = fontMatching(baseFont, pointSize: normalPointSize, forceBold: forceBold)
+        let scaledFont = fontMatching(baseFont, pointSize: scaledPointSize, forceBold: forceBold)
+        return -(scaledFont.capHeight - normalFont.capHeight) / 2
+    }
+
     /// The trigger stored alongside a mention when it was inserted; mentions
     /// created before triggers existed fall back to "@".
     func mentionTrigger(in attributedText: NSAttributedString, at index: Int) -> MentionTrigger {
@@ -1709,14 +1723,18 @@ private extension RichTextEditorViewController {
     /// items in the same list.
     func plainListMarkerAttributes(forMarker marker: String) -> [NSAttributedString.Key: Any] {
         let headingStyle = currentHeadingStyle()
-        var pointSize = headingStyle.pointSize(baseFontSize: baseFont.pointSize)
+        let normalPointSize = headingStyle.pointSize(baseFontSize: baseFont.pointSize)
+        var pointSize = normalPointSize
+        var baselineOffset: CGFloat = 0
         if marker.hasPrefix("•") {
             pointSize *= toolbarConfiguration.bulletMarkerScale
+            baselineOffset = bulletBaselineOffset(normalPointSize: normalPointSize, scaledPointSize: pointSize, forceBold: headingStyle.isBold)
         }
         let font = fontMatching(baseFont, pointSize: pointSize, forceBold: headingStyle.isBold)
         return [
             .font: font,
             .foregroundColor: UIColor.label,
+            .baselineOffset: baselineOffset,
             .paragraphStyle: editorTextView.typingAttributes[.paragraphStyle] ?? defaultParagraphStyle()
         ]
     }

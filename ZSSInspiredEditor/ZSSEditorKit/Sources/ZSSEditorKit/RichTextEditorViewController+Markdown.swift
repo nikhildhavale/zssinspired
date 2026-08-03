@@ -223,8 +223,10 @@ extension RichTextEditorViewController {
             let lineString = NSMutableAttributedString()
             if isBulletLine {
                 remainder = remainder.dropFirst(2)
+                let scaledPointSize = lineFont.pointSize * toolbarConfiguration.bulletMarkerScale
                 var bulletAttributes = plainAttributes
-                bulletAttributes[.font] = fontMatching(lineFont, pointSize: lineFont.pointSize * toolbarConfiguration.bulletMarkerScale)
+                bulletAttributes[.font] = fontMatching(lineFont, pointSize: scaledPointSize)
+                bulletAttributes[.baselineOffset] = bulletBaselineOffset(normalPointSize: lineFont.pointSize, scaledPointSize: scaledPointSize, forceBold: false)
                 lineString.append(NSAttributedString(string: "•\(listMarkerGap)", attributes: bulletAttributes))
             }
             lineString.append(markdownInlineAttributedString(from: remainder, style: MarkdownInlineStyle(), lineFont: lineFont))
