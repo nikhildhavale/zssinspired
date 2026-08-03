@@ -311,14 +311,16 @@ extension RichTextEditorViewController {
         /// content already in the editor keeps whatever gap it was written
         /// with.
         public var listMarkerSpacing: Int
-        /// Scale applied to a "•" bullet marker's point size relative to its
-        /// paragraph's font, both for newly-typed/continued markers and ones
-        /// read back from markdown. Defaults to 1 (same size as the
-        /// surrounding text); pass e.g. 1.3 for a more prominent dot. Doesn't
-        /// affect ordered ("N.") markers. Only affects markers created from
-        /// this point on — existing content already in the editor keeps
-        /// whatever size it was written with.
-        public var bulletMarkerScale: CGFloat
+        /// The character used for an unordered list marker, both for
+        /// newly-typed/continued markers and ones read back from markdown.
+        /// Defaults to "•"; pass a visually bigger dot (e.g. "●" or "⬤") for
+        /// a more prominent marker. Drawn at the same font size as the
+        /// surrounding text — only the glyph's own ink differs — so unlike
+        /// scaling a marker's font size, this never affects a list line's
+        /// height. Doesn't affect ordered ("N.") markers. Only affects
+        /// markers created from this point on — existing content already in
+        /// the editor keeps whatever glyph it was written with.
+        public var bulletMarkerGlyph: Character
 
         public init(
             contentMode: ContentMode = .richText,
@@ -330,7 +332,7 @@ extension RichTextEditorViewController {
             buttonSize: CGFloat = 38,
             bodyFont: UIFont = .systemFont(ofSize: 17),
             listMarkerSpacing: Int = 2,
-            bulletMarkerScale: CGFloat = 1,
+            bulletMarkerGlyph: Character = "•",
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -355,7 +357,7 @@ extension RichTextEditorViewController {
             self.buttonSize = buttonSize
             self.bodyFont = bodyFont
             self.listMarkerSpacing = listMarkerSpacing
-            self.bulletMarkerScale = bulletMarkerScale
+            self.bulletMarkerGlyph = bulletMarkerGlyph
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }

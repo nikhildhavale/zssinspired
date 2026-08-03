@@ -1165,27 +1165,6 @@ extension RichTextEditorViewController {
             let indent = CGFloat(info.nestingLevel + (info.isList ? 1 : 0)) * Self.indentStep
             style.firstLineHeadIndent = indent
             style.headIndent = indent
-            if info.isList {
-                // List items are always tagged `.paragraph` heading style, so
-                // their line height should match plain body text — pin the
-                // floor there so a scaled-up "•" marker (`bulletMarkerScale`)
-                // doesn't inflate the line's vertical space beyond what it
-                // actually needs. The ceiling still has to grow to fit the
-                // scaled marker's own natural line height: clamping it any
-                // tighter leaves the marker's glyph taller than the line box
-                // TextKit thinks it's laying out, which is what caused
-                // selection/marker rendering to go haywire (upside-down text)
-                // when the system's edit menu snapshotted that line.
-                let normalLineHeight = baseFont.lineHeight
-                let markerLineHeight = info.isOrderedList
-                    ? normalLineHeight
-                    : fontMatching(baseFont, pointSize: baseFont.pointSize * toolbarConfiguration.bulletMarkerScale).lineHeight
-                style.minimumLineHeight = normalLineHeight
-                style.maximumLineHeight = max(normalLineHeight, markerLineHeight)
-            } else {
-                style.minimumLineHeight = 0
-                style.maximumLineHeight = 0
-            }
             attributedString.addAttribute(.paragraphStyle, value: style, range: range)
         }
     }
@@ -1212,20 +1191,6 @@ extension RichTextEditorViewController {
 
         let descriptor = font.fontDescriptor.withSymbolicTraits(traits) ?? font.fontDescriptor
         return UIFont(descriptor: descriptor, size: pointSize ?? font.pointSize)
-    }
-
-    /// A "•" glyph sits vertically centered around its font's cap height,
-    /// which — like the rest of the glyph — grows with `bulletMarkerScale`.
-    /// Since the marker shares its baseline with the surrounding (unscaled)
-    /// text, a bigger cap height alone shifts the dot's visual center upward
-    /// relative to the text next to it. Shift it back down by half that
-    /// growth so the enlarged dot stays centered where the normal-size one
-    /// would have been.
-    func bulletBaselineOffset(normalPointSize: CGFloat, scaledPointSize: CGFloat, forceBold: Bool) -> CGFloat {
-        guard scaledPointSize != normalPointSize else { return 0 }
-        let normalFont = fontMatching(baseFont, pointSize: normalPointSize, forceBold: forceBold)
-        let scaledFont = fontMatching(baseFont, pointSize: scaledPointSize, forceBold: forceBold)
-        return -(scaledFont.capHeight - normalFont.capHeight) / 2
     }
 
     /// The trigger stored alongside a mention when it was inserted; mentions
@@ -1697,7 +1662,7 @@ private extension RichTextEditorViewController {
         }
 
         let paragraph = (editorTextView.text as NSString).substring(with: paragraphRange)
-        if paragraph.trimmingCharacters(in: .whitespaces).hasPrefix("•") {
+        if let first = paragraph.trimmingCharacters(in: .whitespaces).first, String.bulletGlyphs.contains(first) {
             return .unordered
         }
         if paragraph.orderedListNumber != nil {
@@ -1730,20 +1695,12 @@ private extension RichTextEditorViewController {
     /// the marker doesn't pick up whatever bold/italic/etc. is active at the
     /// caret and end up a different glyph width than markers in plain list
     /// items in the same list.
-    func plainListMarkerAttributes(forMarker marker: String) -> [NSAttributedString.Key: Any] {
+    func plainListMarkerAttributes() -> [NSAttributedString.Key: Any] {
         let headingStyle = currentHeadingStyle()
-        let normalPointSize = headingStyle.pointSize(baseFontSize: baseFont.pointSize)
-        var pointSize = normalPointSize
-        var baselineOffset: CGFloat = 0
-        if marker.hasPrefix("•") {
-            pointSize *= toolbarConfiguration.bulletMarkerScale
-            baselineOffset = bulletBaselineOffset(normalPointSize: normalPointSize, scaledPointSize: pointSize, forceBold: headingStyle.isBold)
-        }
-        let font = fontMatching(baseFont, pointSize: pointSize, forceBold: headingStyle.isBold)
+        let font = fontMatching(baseFont, pointSize: headingStyle.pointSize(baseFontSize: baseFont.pointSize), forceBold: headingStyle.isBold)
         return [
             .font: font,
             .foregroundColor: UIColor.label,
-            .baselineOffset: baselineOffset,
             .paragraphStyle: editorTextView.typingAttributes[.paragraphStyle] ?? defaultParagraphStyle()
         ]
     }
@@ -1752,10 +1709,10 @@ private extension RichTextEditorViewController {
         let range = currentParagraphRange()
         let nsText = editorTextView.text as NSString
         if nsText.length == 0 {
-            let marker = listMode == .ordered ? "\(orderedListCounter).\(listMarkerGap)" : "•\(listMarkerGap)"
+            let marker = listMode == .ordered ? "\(orderedListCounter).\(listMarkerGap)" : "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
             orderedListCounter += listMode == .ordered ? 1 : 0
             let continuingAttributes = editorTextView.typingAttributes
-            replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes(forMarker: marker)), selectedOffset: marker.count)
+            replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), selectedOffset: marker.count)
             reflowEditorParagraphStyles()
             editorTextView.typingAttributes = continuingAttributes
             return
@@ -1774,7 +1731,7 @@ private extension RichTextEditorViewController {
         let marker: String
         switch listMode {
         case .unordered:
-            marker = "•\(listMarkerGap)"
+            marker = "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
         case .ordered:
             marker = "\(orderedListCounter).\(listMarkerGap)"
             orderedListCounter += 1
@@ -1783,7 +1740,7 @@ private extension RichTextEditorViewController {
         }
 
         let continuingAttributes = editorTextView.typingAttributes
-        mutableText.insert(NSAttributedString(string: marker, attributes: plainListMarkerAttributes(forMarker: marker)), at: range.location)
+        mutableText.insert(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), at: range.location)
         reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + marker.count, length: 0)
@@ -1863,20 +1820,20 @@ private extension RichTextEditorViewController {
 
     func continuationMarker(afterPreviousLine previousLine: String) -> String? {
         let trimmedPrevious = previousLine.trimmingCharacters(in: .whitespaces)
-        let hasBullet = trimmedPrevious.hasPrefix("•")
+        let hasBullet = trimmedPrevious.first.map { String.bulletGlyphs.contains($0) } ?? false
         let hasNumber = previousLine.orderedListNumber != nil
 
         switch listMode {
         case .none:
             if hasBullet {
-                return "•\(listMarkerGap)"
+                return "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)"
             }
             if let number = previousLine.orderedListNumber {
                 return "\(number + 1).\(listMarkerGap)"
             }
             return nil
         case .unordered:
-            return hasBullet ? "•\(listMarkerGap)" : nil
+            return hasBullet ? "\(toolbarConfiguration.bulletMarkerGlyph)\(listMarkerGap)" : nil
         case .ordered:
             guard hasNumber else { return nil }
             let nextNumber = previousLine.orderedListNumber.map { $0 + 1 } ?? orderedListCounter
@@ -1887,7 +1844,10 @@ private extension RichTextEditorViewController {
 
     func shouldEndList(afterPreviousLine previousLine: String) -> Bool {
         let trimmed = previousLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == "•" || trimmed.range(of: #"^\d+\.$"#, options: .regularExpression) != nil
+        if trimmed.count == 1, let only = trimmed.first, String.bulletGlyphs.contains(only) {
+            return true
+        }
+        return trimmed.range(of: #"^\d+\.$"#, options: .regularExpression) != nil
     }
 
     func removePreviousEmptyListMarker() -> Bool {
@@ -2590,7 +2550,7 @@ extension RichTextEditorViewController: UITextViewDelegate {
 
         let continuingAttributes = editorTextView.typingAttributes
         let insertion = NSMutableAttributedString(string: "\n", attributes: continuingAttributes)
-        insertion.append(NSAttributedString(string: marker, attributes: plainListMarkerAttributes(forMarker: marker)))
+        insertion.append(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()))
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         mutableText.replaceCharacters(in: range, with: insertion)
         reflowBlockSpacing(in: mutableText)
@@ -2762,14 +2722,25 @@ extension NSAttributedString.Key {
 // markdown import to classify list lines for `reflowBlockSpacing`.
 extension String {
 
+    /// Every glyph a host app might set `ToolbarConfiguration.bulletMarkerGlyph`
+    /// to — recognized uniformly as a bullet marker regardless of which one
+    /// produced it, so changing the configured glyph later doesn't strand
+    /// previously-typed markers as unrecognized text. All meant to be drawn
+    /// at the same font size as body text (only the glyph's own ink
+    /// differs), so none of them affect line height the way literally
+    /// scaling the marker's font size used to.
+    static let bulletGlyphs: Set<Character> = ["•", "●", "⬤"]
+    static let bulletGlyphPattern = "[\(bulletGlyphs.map(String.init).joined())]"
+
     var hasListMarker: Bool {
         listMarkerRange != nil
     }
 
     var listMarkerRange: NSRange? {
         let nsString = self as NSString
-        if range(of: #"^\s*•\s*"#, options: .regularExpression) != nil {
-            return nsString.range(of: #"^\s*•\s*"#, options: .regularExpression)
+        let bulletRange = nsString.range(of: "^\\s*\(String.bulletGlyphPattern)\\s*", options: .regularExpression)
+        if bulletRange.location != NSNotFound {
+            return bulletRange
         }
 
         let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
