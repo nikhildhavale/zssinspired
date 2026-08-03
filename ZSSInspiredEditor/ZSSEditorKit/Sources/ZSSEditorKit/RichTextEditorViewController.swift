@@ -1167,12 +1167,21 @@ extension RichTextEditorViewController {
             style.headIndent = indent
             if info.isList {
                 // List items are always tagged `.paragraph` heading style, so
-                // their line height should match plain body text — pin it so
-                // a scaled-up "•" marker (`bulletMarkerScale`) makes the dot
-                // bigger without inflating the line's vertical space.
+                // their line height should match plain body text — pin the
+                // floor there so a scaled-up "•" marker (`bulletMarkerScale`)
+                // doesn't inflate the line's vertical space beyond what it
+                // actually needs. The ceiling still has to grow to fit the
+                // scaled marker's own natural line height: clamping it any
+                // tighter leaves the marker's glyph taller than the line box
+                // TextKit thinks it's laying out, which is what caused
+                // selection/marker rendering to go haywire (upside-down text)
+                // when the system's edit menu snapshotted that line.
                 let normalLineHeight = baseFont.lineHeight
+                let markerLineHeight = info.isOrderedList
+                    ? normalLineHeight
+                    : fontMatching(baseFont, pointSize: baseFont.pointSize * toolbarConfiguration.bulletMarkerScale).lineHeight
                 style.minimumLineHeight = normalLineHeight
-                style.maximumLineHeight = normalLineHeight
+                style.maximumLineHeight = max(normalLineHeight, markerLineHeight)
             } else {
                 style.minimumLineHeight = 0
                 style.maximumLineHeight = 0
