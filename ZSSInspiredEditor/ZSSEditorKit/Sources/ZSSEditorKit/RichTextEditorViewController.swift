@@ -1641,14 +1641,32 @@ private extension RichTextEditorViewController {
 
 private extension RichTextEditorViewController {
 
+    /// Attributes for a "• "/"N. " list marker: the paragraph's plain
+    /// heading-aware font (mirrors `markdownToAttributedString`'s
+    /// `plainAttributes` pattern) rather than the live typing attributes, so
+    /// the marker doesn't pick up whatever bold/italic/etc. is active at the
+    /// caret and end up a different glyph width than markers in plain list
+    /// items in the same list.
+    func plainListMarkerAttributes() -> [NSAttributedString.Key: Any] {
+        let headingStyle = currentHeadingStyle()
+        let font = fontMatching(baseFont, pointSize: headingStyle.pointSize(baseFontSize: baseFont.pointSize), forceBold: headingStyle.isBold)
+        return [
+            .font: font,
+            .foregroundColor: UIColor.label,
+            .paragraphStyle: editorTextView.typingAttributes[.paragraphStyle] ?? defaultParagraphStyle()
+        ]
+    }
+
     func applyListMarkersToCurrentParagraphs() {
         let range = currentParagraphRange()
         let nsText = editorTextView.text as NSString
         if nsText.length == 0 {
             let marker = listMode == .ordered ? "\(orderedListCounter). " : "• "
             orderedListCounter += listMode == .ordered ? 1 : 0
-            replaceSelection(with: NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), selectedOffset: marker.count)
+            let continuingAttributes = editorTextView.typingAttributes
+            replaceSelection(with: NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), selectedOffset: marker.count)
             reflowEditorParagraphStyles()
+            editorTextView.typingAttributes = continuingAttributes
             return
         }
 
@@ -1673,10 +1691,12 @@ private extension RichTextEditorViewController {
             return
         }
 
-        mutableText.insert(NSAttributedString(string: marker, attributes: editorTextView.typingAttributes), at: range.location)
+        let continuingAttributes = editorTextView.typingAttributes
+        mutableText.insert(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()), at: range.location)
         reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + marker.count, length: 0)
+        editorTextView.typingAttributes = continuingAttributes
         updatePlaceholder()
         updateToolbarSelectionState()
     }
@@ -2477,12 +2497,15 @@ extension RichTextEditorViewController: UITextViewDelegate {
             return true
         }
 
-        let insertion = NSAttributedString(string: "\n\(marker)", attributes: editorTextView.typingAttributes)
+        let continuingAttributes = editorTextView.typingAttributes
+        let insertion = NSMutableAttributedString(string: "\n", attributes: continuingAttributes)
+        insertion.append(NSAttributedString(string: marker, attributes: plainListMarkerAttributes()))
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
         mutableText.replaceCharacters(in: range, with: insertion)
         reflowBlockSpacing(in: mutableText)
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = NSRange(location: range.location + insertion.length, length: 0)
+        editorTextView.typingAttributes = continuingAttributes
         updatePlaceholder()
         updateToolbarSelectionState()
         return false
