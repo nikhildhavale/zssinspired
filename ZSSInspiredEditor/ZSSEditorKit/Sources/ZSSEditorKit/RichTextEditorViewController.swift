@@ -528,14 +528,18 @@ private extension RichTextEditorViewController {
     }
 
     /// Drives `textContainerInset` on both text views and the placeholder's
-    /// top/leading offset from `contentInset`. The placeholder gets an extra
-    /// nudge matching the text container's line fragment padding so it lines
-    /// up with the first glyph, the same way it does for the default inset.
+    /// top/leading offset from `contentInset`. `lineFragmentPadding` is a
+    /// horizontal-only quantity (the left/right padding UITextContainer adds
+    /// around each line fragment) — it only needs folding into the leading
+    /// offset so the placeholder lines up with the first glyph. Applying it
+    /// to the top offset too would nudge the placeholder down with nothing
+    /// underneath it, since the caret/typed text's vertical position comes
+    /// purely from `textContainerInset.top`.
     private func applyContentInset() {
         editorTextView.textContainerInset = contentInset
         htmlTextView.textContainerInset = contentInset
         let padding = editorTextView.textContainer.lineFragmentPadding
-        placeholderTopConstraint?.constant = contentInset.top + padding
+        placeholderTopConstraint?.constant = contentInset.top
         placeholderLeadingConstraint?.constant = contentInset.left + padding
     }
 
