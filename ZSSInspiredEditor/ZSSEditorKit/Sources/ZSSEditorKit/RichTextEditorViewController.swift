@@ -1283,7 +1283,9 @@ private extension RichTextEditorViewController {
         }
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
-        mutableText.addAttribute(key, value: value, range: range)
+        for subrange in rangesExcludingListMarkers(from: range) {
+            mutableText.addAttribute(key, value: value, range: subrange)
+        }
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
         updateToolbarSelectionState()
@@ -1297,10 +1299,48 @@ private extension RichTextEditorViewController {
         }
 
         let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
-        mutableText.removeAttribute(key, range: range)
+        for subrange in rangesExcludingListMarkers(from: range) {
+            mutableText.removeAttribute(key, range: subrange)
+        }
         editorTextView.attributedText = mutableText
         editorTextView.selectedRange = range
         updateToolbarSelectionState()
+    }
+
+    /// Splits `range` into the sub-ranges that don't touch any list marker
+    /// ("• "/"N. ") it overlaps. A selection that happens to span back over
+    /// a marker (e.g. selecting a whole list item before tapping Bold/
+    /// Italic/etc.) must not restyle the marker itself — it stays plain
+    /// regardless of what the user selects, same as at insertion time.
+    func rangesExcludingListMarkers(from range: NSRange) -> [NSRange] {
+        let textLength = editorTextView.text.count
+        guard range.length > 0, textLength > 0 else { return [range] }
+
+        let text = editorTextView.text as NSString
+        var markerRanges: [NSRange] = []
+        for paragraphRange in paragraphRanges(in: range, textLength: textLength) {
+            guard paragraphRange.location < textLength else { continue }
+            let paragraph = text.substring(with: paragraphRange)
+            guard let markerRange = paragraph.listMarkerRange else { continue }
+            let absoluteMarkerRange = NSRange(location: paragraphRange.location + markerRange.location, length: markerRange.length)
+            if let intersection = absoluteMarkerRange.intersection(range) {
+                markerRanges.append(intersection)
+            }
+        }
+        guard !markerRanges.isEmpty else { return [range] }
+
+        var result: [NSRange] = []
+        var cursor = range.location
+        for markerRange in markerRanges.sorted(by: { $0.location < $1.location }) {
+            if markerRange.location > cursor {
+                result.append(NSRange(location: cursor, length: markerRange.location - cursor))
+            }
+            cursor = max(cursor, markerRange.upperBound)
+        }
+        if cursor < range.upperBound {
+            result.append(NSRange(location: cursor, length: range.upperBound - cursor))
+        }
+        return result
     }
 
     func replaceSelection(with attributedString: NSAttributedString, selectedOffset: Int) {
