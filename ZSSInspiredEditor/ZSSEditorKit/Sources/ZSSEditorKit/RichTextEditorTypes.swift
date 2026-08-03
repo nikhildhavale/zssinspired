@@ -311,6 +311,14 @@ extension RichTextEditorViewController {
         /// content already in the editor keeps whatever gap it was written
         /// with.
         public var listMarkerSpacing: Int
+        /// Scale applied to a "•" bullet marker's point size relative to its
+        /// paragraph's font, both for newly-typed/continued markers and ones
+        /// read back from markdown. Defaults to 1 (same size as the
+        /// surrounding text); pass e.g. 1.3 for a more prominent dot. Doesn't
+        /// affect ordered ("N.") markers. Only affects markers created from
+        /// this point on — existing content already in the editor keeps
+        /// whatever size it was written with.
+        public var bulletMarkerScale: CGFloat
 
         public init(
             contentMode: ContentMode = .richText,
@@ -322,6 +330,7 @@ extension RichTextEditorViewController {
             buttonSize: CGFloat = 38,
             bodyFont: UIFont = .systemFont(ofSize: 17),
             listMarkerSpacing: Int = 2,
+            bulletMarkerScale: CGFloat = 1,
             foregroundColors: [ToolbarColor] = [
                 ToolbarColor(name: "Default", color: .label),
                 ToolbarColor(name: "Red", color: .systemRed),
@@ -346,6 +355,7 @@ extension RichTextEditorViewController {
             self.buttonSize = buttonSize
             self.bodyFont = bodyFont
             self.listMarkerSpacing = listMarkerSpacing
+            self.bulletMarkerScale = bulletMarkerScale
             self.foregroundColors = foregroundColors
             self.backgroundColors = backgroundColors
         }
