@@ -1165,6 +1165,18 @@ extension RichTextEditorViewController {
             let indent = CGFloat(info.nestingLevel + (info.isList ? 1 : 0)) * Self.indentStep
             style.firstLineHeadIndent = indent
             style.headIndent = indent
+            if info.isList {
+                // List items are always tagged `.paragraph` heading style, so
+                // their line height should match plain body text — pin it so
+                // a scaled-up "•" marker (`bulletMarkerScale`) makes the dot
+                // bigger without inflating the line's vertical space.
+                let normalLineHeight = baseFont.lineHeight
+                style.minimumLineHeight = normalLineHeight
+                style.maximumLineHeight = normalLineHeight
+            } else {
+                style.minimumLineHeight = 0
+                style.maximumLineHeight = 0
+            }
             attributedString.addAttribute(.paragraphStyle, value: style, range: range)
         }
     }
