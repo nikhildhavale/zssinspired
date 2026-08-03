@@ -1095,7 +1095,7 @@ extension RichTextEditorViewController {
         var info = LineBlockInfo()
         let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
         info.isHeading = isHeading
-        info.isList = !info.isHeading && trimmedLine.hasListMarker
+        info.isList = !info.isHeading && hasListMarker(trimmedLine)
         info.isOrderedList = info.isList && trimmedLine.orderedListNumber != nil
 
         let rawHeadIndent = existingParagraphStyle?.headIndent ?? 0
@@ -1191,6 +1191,47 @@ extension RichTextEditorViewController {
 
         let descriptor = font.fontDescriptor.withSymbolicTraits(traits) ?? font.fontDescriptor
         return UIFont(descriptor: descriptor, size: pointSize ?? font.pointSize)
+    }
+
+    /// Every glyph currently recognized as a bullet marker: the legacy
+    /// presets (`String.bulletGlyphs`, kept so content typed under a
+    /// previously configured glyph still round-trips) plus whatever
+    /// `toolbarConfiguration.bulletMarkerGlyph` is set to right now — so a
+    /// host app can configure literally any single `Character` and have
+    /// list continuation, selection, and markdown import/export all
+    /// recognize it, not just one of the legacy presets.
+    var recognizedBulletGlyphs: Set<Character> {
+        String.bulletGlyphs.union([toolbarConfiguration.bulletMarkerGlyph])
+    }
+
+    /// `recognizedBulletGlyphs` as a regex character class, with the few
+    /// characters that are special inside `[...]` escaped so an unusual
+    /// configured glyph (e.g. "]" or "-") can't corrupt the pattern.
+    var recognizedBulletGlyphPattern: String {
+        let escaped = recognizedBulletGlyphs.map { character -> String in
+            switch character {
+            case "\\", "]", "^", "-":
+                return "\\\(character)"
+            default:
+                return String(character)
+            }
+        }
+        return "[\(escaped.joined())]"
+    }
+
+    func hasListMarker(_ line: String) -> Bool {
+        listMarkerRange(in: line) != nil
+    }
+
+    func listMarkerRange(in line: String) -> NSRange? {
+        let nsString = line as NSString
+        let bulletRange = nsString.range(of: "^\\s*\(recognizedBulletGlyphPattern)\\s*", options: .regularExpression)
+        if bulletRange.location != NSNotFound {
+            return bulletRange
+        }
+
+        let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
+        return orderedRange.location == NSNotFound ? nil : orderedRange
     }
 
     /// The trigger stored alongside a mention when it was inserted; mentions
@@ -1329,7 +1370,7 @@ private extension RichTextEditorViewController {
         for paragraphRange in paragraphRanges(in: range, textLength: textLength) {
             guard paragraphRange.location < textLength else { continue }
             let paragraph = text.substring(with: paragraphRange)
-            guard let markerRange = paragraph.listMarkerRange else { continue }
+            guard let markerRange = listMarkerRange(in: paragraph) else { continue }
             let absoluteMarkerRange = NSRange(location: paragraphRange.location + markerRange.location, length: markerRange.length)
             if let intersection = absoluteMarkerRange.intersection(range) {
                 markerRanges.append(intersection)
@@ -1662,7 +1703,7 @@ private extension RichTextEditorViewController {
         }
 
         let paragraph = (editorTextView.text as NSString).substring(with: paragraphRange)
-        if let first = paragraph.trimmingCharacters(in: .whitespaces).first, String.bulletGlyphs.contains(first) {
+        if let first = paragraph.trimmingCharacters(in: .whitespaces).first, recognizedBulletGlyphs.contains(first) {
             return .unordered
         }
         if paragraph.orderedListNumber != nil {
@@ -1723,7 +1764,7 @@ private extension RichTextEditorViewController {
 
         let paragraph = (mutableText.string as NSString).substring(with: range)
 
-        if paragraph.hasListMarker {
+        if hasListMarker(paragraph) {
             updateToolbarSelectionState()
             return
         }
@@ -1761,7 +1802,7 @@ private extension RichTextEditorViewController {
 
             let adjustedRange = NSRange(location: adjustedLocation, length: min(paragraphRange.length, mutableText.length - adjustedLocation))
             let paragraph = (mutableText.string as NSString).substring(with: adjustedRange)
-            guard let markerRange = paragraph.listMarkerRange else { continue }
+            guard let markerRange = listMarkerRange(in: paragraph) else { continue }
 
             mutableText.deleteCharacters(in: NSRange(location: adjustedLocation, length: markerRange.length))
             locationDelta += markerRange.length
@@ -1820,7 +1861,7 @@ private extension RichTextEditorViewController {
 
     func continuationMarker(afterPreviousLine previousLine: String) -> String? {
         let trimmedPrevious = previousLine.trimmingCharacters(in: .whitespaces)
-        let hasBullet = trimmedPrevious.first.map { String.bulletGlyphs.contains($0) } ?? false
+        let hasBullet = trimmedPrevious.first.map { recognizedBulletGlyphs.contains($0) } ?? false
         let hasNumber = previousLine.orderedListNumber != nil
 
         switch listMode {
@@ -1844,7 +1885,7 @@ private extension RichTextEditorViewController {
 
     func shouldEndList(afterPreviousLine previousLine: String) -> Bool {
         let trimmed = previousLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count == 1, let only = trimmed.first, String.bulletGlyphs.contains(only) {
+        if trimmed.count == 1, let only = trimmed.first, recognizedBulletGlyphs.contains(only) {
             return true
         }
         return trimmed.range(of: #"^\d+\.$"#, options: .regularExpression) != nil
@@ -1857,7 +1898,7 @@ private extension RichTextEditorViewController {
 
         let previousParagraph = text.paragraphRange(for: NSRange(location: selection.location - 1, length: 0))
         let previousLine = text.substring(with: previousParagraph)
-        guard shouldEndList(afterPreviousLine: previousLine), let markerRange = previousLine.listMarkerRange else {
+        guard shouldEndList(afterPreviousLine: previousLine), let markerRange = listMarkerRange(in: previousLine) else {
             return false
         }
 
@@ -2722,30 +2763,13 @@ extension NSAttributedString.Key {
 // markdown import to classify list lines for `reflowBlockSpacing`.
 extension String {
 
-    /// Every glyph a host app might set `ToolbarConfiguration.bulletMarkerGlyph`
-    /// to — recognized uniformly as a bullet marker regardless of which one
-    /// produced it, so changing the configured glyph later doesn't strand
-    /// previously-typed markers as unrecognized text. All meant to be drawn
-    /// at the same font size as body text (only the glyph's own ink
-    /// differs), so none of them affect line height the way literally
-    /// scaling the marker's font size used to.
+    /// Bullet glyphs recognized regardless of the currently configured
+    /// `ToolbarConfiguration.bulletMarkerGlyph` — kept so content typed
+    /// under an older configured glyph still round-trips. See
+    /// `RichTextEditorViewController.recognizedBulletGlyphs`, which unions
+    /// this with whatever glyph is configured right now; that instance-aware
+    /// set (not this one alone) is what marker-detection call sites use.
     static let bulletGlyphs: Set<Character> = ["•", "●", "⬤"]
-    static let bulletGlyphPattern = "[\(bulletGlyphs.map(String.init).joined())]"
-
-    var hasListMarker: Bool {
-        listMarkerRange != nil
-    }
-
-    var listMarkerRange: NSRange? {
-        let nsString = self as NSString
-        let bulletRange = nsString.range(of: "^\\s*\(String.bulletGlyphPattern)\\s*", options: .regularExpression)
-        if bulletRange.location != NSNotFound {
-            return bulletRange
-        }
-
-        let orderedRange = nsString.range(of: #"^\s*\d+\.\s*"#, options: .regularExpression)
-        return orderedRange.location == NSNotFound ? nil : orderedRange
-    }
 
     var orderedListNumber: Int? {
         let nsString = self as NSString

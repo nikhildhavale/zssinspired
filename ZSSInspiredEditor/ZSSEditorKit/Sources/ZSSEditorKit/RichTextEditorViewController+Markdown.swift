@@ -91,7 +91,7 @@ extension RichTextEditorViewController {
                         // recognized as a list marker by the bullet/number
                         // post-processing below, which only matches at the
                         // very start of the line.
-                        let leadingMarkerRange = core.range(of: "^\\s*(\(String.bulletGlyphPattern)|\\d+\\.)\\s*", options: .regularExpression)
+                        let leadingMarkerRange = core.range(of: "^\\s*(\(recognizedBulletGlyphPattern)|\\d+\\.)\\s*", options: .regularExpression)
                         let leadingSpace = leadingMarkerRange.map { String(core[$0]) } ?? String(core.prefix(while: { $0 == " " }))
                         let trailingSpace = String(core.reversed().prefix(while: { $0 == " " }).reversed())
                         var wrapped = String(core.dropFirst(leadingSpace.count).dropLast(trailingSpace.count))
@@ -144,7 +144,7 @@ extension RichTextEditorViewController {
                 // in the editor; collapse that back down to a single
                 // canonical space here so stored markdown doesn't carry the
                 // editor's presentation-only spacing.
-                var converted = line.replacingOccurrences(of: "^(\\s*)\(String.bulletGlyphPattern)\\s*", with: "$1- ", options: .regularExpression)
+                var converted = line.replacingOccurrences(of: "^(\\s*)\(recognizedBulletGlyphPattern)\\s*", with: "$1- ", options: .regularExpression)
                 converted = converted.replacingOccurrences(of: #"^(\s*)(\d+)\.\s*"#, with: "$1$2. ", options: .regularExpression)
                 let isListLine = converted.range(of: #"^\s*(-|\d+\.)\s"#, options: .regularExpression) != nil
                 if isListLine {
