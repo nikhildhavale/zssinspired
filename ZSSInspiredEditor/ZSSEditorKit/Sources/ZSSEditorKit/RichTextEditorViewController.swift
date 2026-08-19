@@ -90,8 +90,10 @@ public final class RichTextEditorViewController: UIViewController {
     /// attributed string the editor displays in edit mode. Understands the
     /// dialect the `markdown` getter emits: `**bold**`, `*italic*`,
     /// `__underline__`, `~~strikethrough~~`, `[text](url)`, `#`–`######`
-    /// headings, `- ` bullets, literal `1. ` numbered lists, 4-space list
-    /// indents, and "@"/"#" mention/hashtag tokens (rendered as pills the
+    /// headings, `- `/`* `/`+ ` bullets, `1. `/`1) ` numbered lists, list
+    /// nesting indented by any width (this editor writes 4 spaces per level;
+    /// 2-space and tab-indented nesting read back at the right level too),
+    /// and "@"/"#" mention/hashtag tokens (rendered as pills the
     /// same way picking one from the live suggestion picker would, using
     /// the token text itself as the display name — no backend lookup).
     /// Safe to call before the view is loaded.
@@ -2067,6 +2069,33 @@ extension RichTextEditorViewController {
         refreshInsertedMentionsAndHashtags()
     }
 
+    /// Replaces `range` with `markdown` run through `markdownToAttributedString`,
+    /// then reflows so the imported blocks and their new neighbours get the
+    /// spacing/indent they'd have if they'd been typed here.
+    func insertImportedMarkdown(_ markdown: String, replacing range: NSRange) {
+        let insertion = markdownToAttributedString(markdown)
+        let mutableText = NSMutableAttributedString(attributedString: editorTextView.attributedText)
+        mutableText.replaceCharacters(in: range, with: insertion)
+        reflowBlockSpacing(in: mutableText)
+
+        var typingAttributes = editorTextView.typingAttributes
+        let caret = range.location + insertion.length
+        // Keep typing where the import left off: the caret sits at the end of
+        // the last imported paragraph, so carry that paragraph's indent into
+        // the typing attributes instead of dropping back to the pre-paste one.
+        if caret > 0, caret <= mutableText.length,
+           let paragraphStyle = mutableText.attribute(.paragraphStyle, at: caret - 1, effectiveRange: nil) {
+            typingAttributes[.paragraphStyle] = paragraphStyle
+        }
+
+        editorTextView.attributedText = mutableText
+        editorTextView.selectedRange = NSRange(location: caret, length: 0)
+        editorTextView.typingAttributes = typingAttributes
+        updatePlaceholder()
+        updateToolbarSelectionState()
+        refreshInsertedMentionsAndHashtags()
+    }
+
     func linkTypingAttributes(url: URL) -> [NSAttributedString.Key: Any] {
         var attributes = defaultTypingAttributes()
         attributes[.link] = url
@@ -2622,7 +2651,21 @@ extension RichTextEditorViewController: UITextViewDelegate {
         shouldChangeTextIn range: NSRange,
         replacementText text: String
     ) -> Bool {
-        guard textView == editorTextView, text == "\n" else {
+        guard textView == editorTextView else {
+            return true
+        }
+
+        guard text == "\n" else {
+            // A multi-character insertion carrying markdown block structure is
+            // pasted (or dropped) markdown: import it the way `setMarkdown`
+            // does, so headings and nested lists become real editor structure
+            // — nesting living in the paragraph style, not in literal leading
+            // spaces that stay literal text here and are at the mercy of
+            // whichever renderer sees the exported markdown next.
+            if text.count > 1, containsMarkdownBlockStructure(text) {
+                insertImportedMarkdown(text, replacing: range)
+                return false
+            }
             return true
         }
 

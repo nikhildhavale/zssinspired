@@ -1,5 +1,23 @@
 import UIKit
 
+/// A list marker parsed off the front of a markdown line during import.
+private struct MarkdownListMarker {
+    enum Kind {
+        case bullet
+        case ordered
+    }
+
+    var kind: Kind
+    /// Column the item's content starts at — what decides whether the marker
+    /// on the *next* line is a child of this item or a sibling of it.
+    var contentColumn: Int
+    /// The authored number of an ordered item, so an imported list starts
+    /// counting where the source said it does.
+    var number: Int
+    /// The line past the marker and its trailing gap.
+    var remainder: Substring
+}
+
 /// Inline formatting accumulated while parsing markdown spans.
 private struct MarkdownInlineStyle {
     var bold = false
@@ -199,19 +217,32 @@ extension RichTextEditorViewController {
 extension RichTextEditorViewController {
 
     /// Inverse of `attributedStringToMarkdown`: builds the attributed string
-    /// shown in edit mode from the markdown dialect this editor emits.
+    /// shown in edit mode from the markdown dialect this editor emits — and
+    /// from the wider CommonMark spelling of it other editors produce, since
+    /// pasted content isn't written in this editor's own canonical form:
+    /// "*"/"+" bullets, "N)" numbers, CRLF line endings, tabs, and nesting
+    /// indented by any width (2 spaces, say) rather than exactly 4.
     func markdownToAttributedString(_ markdown: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let lines = markdown.components(separatedBy: "\n")
+        let lines = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        // The list items enclosing the current line, innermost last, as
+        // column positions. A line nests inside the item above it when its
+        // marker starts at or past that item's content column — CommonMark's
+        // rule, and what makes 2-space (or tabbed, or ragged) indentation
+        // read back at the level it was authored at instead of collapsing
+        // flat, which is all a plain "count 4-space groups" pass could do.
+        var openListItems: [(markerColumn: Int, contentColumn: Int)] = []
 
         for (index, line) in lines.enumerated() {
-            var remainder = Substring(line)
-
-            var indentLevel = 0
-            while remainder.hasPrefix("    ") {
-                indentLevel += 1
-                remainder = remainder.dropFirst(4)
-            }
+            let (indentColumns, afterIndent) = splitLeadingIndent(Substring(line))
+            var remainder = afterIndent
+            // Anything that isn't a list item still takes its nesting from
+            // this editor's own 4-space indent unit.
+            var indentLevel = indentColumns / 4
 
             var headingStyle = HeadingStyle.paragraph
             let hashes = remainder.prefix(while: { $0 == "#" })
@@ -220,18 +251,42 @@ extension RichTextEditorViewController {
                 remainder = remainder.dropFirst(hashes.count + 1)
             }
 
+            var listMarker: MarkdownListMarker?
+            if headingStyle == .paragraph, let marker = splitListMarker(remainder, markerColumn: indentColumns) {
+                while let innermost = openListItems.last, indentColumns < innermost.contentColumn {
+                    openListItems.removeLast()
+                }
+                indentLevel = openListItems.count
+                openListItems.append((markerColumn: indentColumns, contentColumn: marker.contentColumn))
+                listMarker = marker
+                remainder = marker.remainder
+            } else if headingStyle != .paragraph || !remainder.isEmpty {
+                // A heading or an ordinary paragraph ends the list; a blank
+                // line doesn't (a loose list keeps going across it).
+                openListItems.removeAll()
+            }
+
             let lineFont = headingStyle == .paragraph
                 ? baseFont
                 : fontMatching(baseFont, pointSize: headingStyle.pointSize(baseFontSize: baseFont.pointSize), forceBold: true)
             let plainAttributes = markdownInlineAttributes(MarkdownInlineStyle(), lineFont: lineFont)
-            let isOrderedLine = headingStyle == .paragraph && String(remainder).orderedListNumber != nil
-            let isBulletLine = headingStyle == .paragraph && remainder.hasPrefix("- ")
+            let isOrderedLine = listMarker?.kind == .ordered
+            let isBulletLine = listMarker?.kind == .bullet
 
             let lineString = NSMutableAttributedString()
-            if isBulletLine {
-                remainder = remainder.dropFirst(2)
-                lineString.append(bulletMarkerAttachmentAttributedString(pointSize: lineFont.pointSize, forceBold: false))
-                lineString.append(NSAttributedString(string: listMarkerGap, attributes: plainAttributes))
+            if let listMarker {
+                switch listMarker.kind {
+                case .bullet:
+                    lineString.append(bulletMarkerAttachmentAttributedString(pointSize: lineFont.pointSize, forceBold: false))
+                    lineString.append(NSAttributedString(string: listMarkerGap, attributes: plainAttributes))
+                case .ordered:
+                    // Numbers stay literal text in the editor (only bullets
+                    // become an attachment marker), rewritten as "N." plus
+                    // `listMarkerGap` so an imported item is spelled exactly
+                    // like a typed one — including when the source wrote it
+                    // "N)" or with a different gap.
+                    lineString.append(NSAttributedString(string: "\(listMarker.number).\(listMarkerGap)", attributes: plainAttributes))
+                }
             }
             lineString.append(markdownInlineAttributedString(from: remainder, style: MarkdownInlineStyle(), lineFont: lineFont))
             if index < lines.count - 1 {
@@ -265,6 +320,76 @@ extension RichTextEditorViewController {
         reflowBlockSpacing(in: result)
 
         return result
+    }
+
+    /// Whether `text` carries markdown *block* structure — a heading or a
+    /// list item. Pasted text only goes through the markdown importer when it
+    /// does, so prose that merely happens to contain a "*" or a "#" is pasted
+    /// as the literal text it is.
+    func containsMarkdownBlockStructure(_ text: String) -> Bool {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .contains { line in
+                let (indentColumns, afterIndent) = splitLeadingIndent(Substring(line))
+                if splitListMarker(afterIndent, markerColumn: indentColumns) != nil { return true }
+                let hashes = afterIndent.prefix(while: { $0 == "#" })
+                return (1...6).contains(hashes.count) && afterIndent.dropFirst(hashes.count).hasPrefix(" ")
+            }
+    }
+
+    /// Splits the leading indentation off `line`: its width in columns (tabs
+    /// expanded to the next four-column stop, how CommonMark counts them) and
+    /// the rest of the line.
+    private func splitLeadingIndent(_ line: Substring) -> (columns: Int, rest: Substring) {
+        var columns = 0
+        var rest = line
+        while let character = rest.first, character == " " || character == "\t" {
+            columns += character == "\t" ? 4 - (columns % 4) : 1
+            rest = rest.dropFirst()
+        }
+        return (columns, rest)
+    }
+
+    /// Matches a "- "/"* "/"+ " bullet or a "1. "/"1) " number at the start of
+    /// `text` (already stripped of the indentation that starts at
+    /// `markerColumn`). The trailing space is required, so a lone "-" line
+    /// stays the horizontal rule this editor writes it as and "*emphasis*"
+    /// stays emphasis.
+    private func splitListMarker(_ text: Substring, markerColumn: Int) -> MarkdownListMarker? {
+        let kind: MarkdownListMarker.Kind
+        var number = 1
+        var rest: Substring
+
+        if let first = text.first, first == "-" || first == "*" || first == "+", text.dropFirst().first == " " {
+            kind = .bullet
+            rest = text.dropFirst()
+        } else {
+            let digits = text.prefix(while: { $0.isASCII && $0.isNumber })
+            let afterDigits = text.dropFirst(digits.count)
+            guard !digits.isEmpty, digits.count <= 9,
+                  let delimiter = afterDigits.first, delimiter == "." || delimiter == ")",
+                  afterDigits.dropFirst().first == " ",
+                  let value = Int(digits)
+            else { return nil }
+            kind = .ordered
+            number = value
+            rest = afterDigits.dropFirst()
+        }
+
+        let markerWidth = text.count - rest.count
+        // CommonMark caps the marker-to-content gap at 4 columns (past that
+        // the content is an indented code block, not a deeper hanging
+        // indent) — cap it the same way, so a stray run of spaces can't push
+        // every following line into a phantom nesting level.
+        let gap = min(rest.prefix(while: { $0 == " " }).count, 4)
+        return MarkdownListMarker(
+            kind: kind,
+            contentColumn: markerColumn + markerWidth + gap,
+            number: number,
+            remainder: rest.dropFirst(gap)
+        )
     }
 
     private func markdownInlineAttributedString(from text: Substring, style: MarkdownInlineStyle, lineFont: UIFont) -> NSAttributedString {
